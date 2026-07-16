@@ -27,6 +27,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdint.h>
+#include "route_plan.h"
 
 /* USER CODE END Includes */
 
@@ -468,6 +469,103 @@ static void Y_RunForTime(int8_t direction, uint32_t run_time_ms)
 
   M2006_Stop();
   HAL_Delay(ACTION_INTERVAL_MS);
+}
+
+static void XY_RunSegment(const MotionSegment_t *segment)
+{
+  uint32_t start_tick = HAL_GetTick();
+  uint32_t last_x_command_tick = start_tick;
+  uint32_t last_y_control_tick = start_tick;
+  uint8_t x_running = (segment->x_time_ms > 0U) ? 1U : 0U;
+  uint8_t y_running = (segment->y_time_ms > 0U) ? 1U : 0U;
+
+  if (x_running != 0U)
+  {
+    X_SetPairedVelocity(segment->x_speed_rad_s);
+  }
+
+  M2006_SpeedPidReset();
+  if (y_running != 0U)
+  {
+    int16_t current = M2006_SpeedPidCalc(segment->y_speed_rpm,
+                                         m2006_motor.speed_rpm,
+                                         (float)M2006_CONTROL_PERIOD_MS / 1000.0f);
+    M2006_SetCurrent(current);
+  }
+
+  while ((x_running != 0U) || (y_running != 0U))
+  {
+    uint32_t now = HAL_GetTick();
+    uint32_t elapsed_ms = now - start_tick;
+
+    if (x_running != 0U)
+    {
+      if (elapsed_ms >= segment->x_time_ms)
+      {
+        X_Stop();
+        x_running = 0U;
+      }
+      else if ((now - last_x_command_tick) >= X_COMMAND_REFRESH_MS)
+      {
+        X_SetPairedVelocity(segment->x_speed_rad_s);
+        last_x_command_tick = now;
+      }
+    }
+
+    if (y_running != 0U)
+    {
+      if (elapsed_ms >= segment->y_time_ms)
+      {
+        M2006_Stop();
+        y_running = 0U;
+      }
+      else if ((now - last_y_control_tick) >= M2006_CONTROL_PERIOD_MS)
+      {
+        float dt_s = (float)(now - last_y_control_tick) / 1000.0f;
+        int16_t current;
+
+        last_y_control_tick = now;
+        current = M2006_SpeedPidCalc(segment->y_speed_rpm,
+                                     m2006_motor.speed_rpm,
+                                     dt_s);
+        M2006_SetCurrent(current);
+      }
+    }
+
+    HAL_Delay(1U);
+  }
+
+  if (segment->pause_after_ms > 0U)
+  {
+    HAL_Delay(segment->pause_after_ms);
+  }
+}
+
+uint8_t Route_Run(uint8_t from_position, uint8_t to_position)
+{
+  const RoutePlan_t *route = RoutePlan_Find(from_position, to_position);
+  uint8_t segment_index;
+
+  if ((route == 0) || (route->configured == 0U))
+  {
+    X_Stop();
+    M2006_Stop();
+    return 0U;
+  }
+
+  X_Stop();
+  M2006_Stop();
+
+  for (segment_index = 0U;
+       segment_index < route->segment_count;
+       segment_index++)
+  {
+    XY_RunSegment(&route->segments[segment_index]);
+  }
+
+  X_Stop();
+  M2006_Stop();
+  return 1U;
 }
 
 static void Competition_RunSequence(void)
