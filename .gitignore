@@ -1,0 +1,14 @@
+# Keil build output
+/MDK-ARM/final_crane/
+/MDK-ARM/*.lst
+/MDK-ARM/*.log
+
+# Keil per-user state
+/MDK-ARM/*.uvguix.*
+/MDK-ARM/*.uvoptx
+
+# Local editor and temporary files
+/.vscode/
+*.bak
+*.tmp
+Thumbs.db
