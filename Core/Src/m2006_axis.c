@@ -105,18 +105,24 @@ static HAL_StatusTypeDef M2006_SendCurrent(int16_t current)
                                        data);
 }
 
-static void M2006_ZeroOutput(void)
+static HAL_StatusTypeDef M2006_ZeroOutput(void)
 {
   uint32_t repeat;
+  HAL_StatusTypeDef status = HAL_ERROR;
 
   for (repeat = 0U; repeat < M2006_STOP_REPEAT_COUNT; repeat++)
   {
-    (void)M2006_SendCurrent(0);
+    if (M2006_SendCurrent(0) == HAL_OK)
+    {
+      status = HAL_OK;
+    }
     if ((repeat + 1U) < M2006_STOP_REPEAT_COUNT)
     {
       HAL_Delay(1U);
     }
   }
+
+  return status;
 }
 
 static void M2006_SetFault(M2006_AxisFault_t fault)
@@ -126,7 +132,10 @@ static void M2006_SetFault(M2006_AxisFault_t fault)
   m2006_axis.speed_integral = 0.0f;
   m2006_axis.fault = fault;
   m2006_axis.state = M2006_AXIS_FAULT;
-  M2006_ZeroOutput();
+  if (M2006_ZeroOutput() != HAL_OK)
+  {
+    m2006_axis.fault = M2006_AXIS_FAULT_CAN_TX;
+  }
 }
 
 static int16_t M2006_SpeedPi(float target_rpm,
@@ -215,8 +224,7 @@ HAL_StatusTypeDef M2006_Axis_Init(FDCAN_HandleTypeDef *hfdcan)
     return HAL_ERROR;
   }
 
-  M2006_ZeroOutput();
-  return HAL_OK;
+  return M2006_ZeroOutput();
 }
 
 void M2006_Axis_OnFeedback(const uint8_t data[8], uint32_t now_ms)
@@ -344,8 +352,15 @@ void M2006_Axis_Stop(void)
   m2006_axis.target_speed_rpm = 0;
   m2006_axis.command_speed_rpm = 0.0f;
   m2006_axis.speed_integral = 0.0f;
-  m2006_axis.state = M2006_AXIS_IDLE;
-  M2006_ZeroOutput();
+  if (M2006_ZeroOutput() == HAL_OK)
+  {
+    m2006_axis.state = M2006_AXIS_IDLE;
+  }
+  else
+  {
+    m2006_axis.fault = M2006_AXIS_FAULT_CAN_TX;
+    m2006_axis.state = M2006_AXIS_FAULT;
+  }
 }
 
 uint8_t M2006_Axis_HasFeedback(void)

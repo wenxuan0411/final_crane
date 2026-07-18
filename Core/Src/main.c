@@ -85,9 +85,7 @@ typedef struct
 #define DM3519_FALLBACK_PMAX_RAD           12.5f
 #define DM3519_FALLBACK_VMAX_RAD_S         45.0f
 #define DM3519_FALLBACK_TMAX_NM            18.0f
-#define DM3519_X_REDUCTION_RATIO           19.2f
-
-#define X_RUN_SPEED_RAD_S                  15.0f
+#define X_RUN_SPEED_RAD_S                  35.0f
 #define X_COMMAND_REFRESH_MS               20U
 #define X_SYNC_KP                          1.0f
 #define X_SYNC_MAX_CORRECTION_RAD_S        1.5f
@@ -601,8 +599,7 @@ static void X_SetSynchronizedVelocity(float base_velocity_rad_s, uint32_t now)
   }
 
   position_error_rad = motor1_position_rad - motor2_position_rad;
-  correction_rad_s = X_SYNC_KP * position_error_rad /
-                     DM3519_X_REDUCTION_RATIO;
+  correction_rad_s = X_SYNC_KP * position_error_rad;
   correction_rad_s = X_ClampSignedVelocity(correction_rad_s,
                                             X_SYNC_MAX_CORRECTION_RAD_S);
 
@@ -628,8 +625,7 @@ static uint8_t X_GetAxisPosition(uint32_t now, float *position_rad)
   }
 
   *position_rad = 0.5f *
-                  (motor1_position_rad + motor2_position_rad) /
-                  DM3519_X_REDUCTION_RATIO;
+                  (motor1_position_rad + motor2_position_rad);
   return 1U;
 }
 
@@ -663,8 +659,7 @@ static uint8_t X_PrepareTargetMotion(float target_position_rad,
   {
     *velocity_rad_s = 0.0f;
   }
-  *motor_target_position_rad = target_position_rad *
-                               DM3519_X_REDUCTION_RATIO;
+  *motor_target_position_rad = target_position_rad;
   return 1U;
 }
 
@@ -743,15 +738,13 @@ static int8_t X_TargetCorrectionUpdate(X_TargetCorrection_t *correction,
   {
     correction->within_tolerance = 0U;
     average_error_rad = 0.5f * (motor1_error_rad + motor2_error_rad);
-    common_velocity_rad_s = X_TARGET_KP * average_error_rad /
-                            DM3519_X_REDUCTION_RATIO;
+    common_velocity_rad_s = X_TARGET_KP * average_error_rad;
     common_velocity_rad_s =
       X_ClampSignedVelocity(common_velocity_rad_s,
                             X_TARGET_MAX_VELOCITY_RAD_S);
 
     sync_correction_rad_s =
-      X_SYNC_KP * (motor1_position_rad - motor2_position_rad) /
-      DM3519_X_REDUCTION_RATIO;
+      X_SYNC_KP * (motor1_position_rad - motor2_position_rad);
     sync_correction_rad_s =
       X_ClampSignedVelocity(sync_correction_rad_s,
                             X_SYNC_MAX_CORRECTION_RAD_S);
@@ -1160,42 +1153,52 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
 {
   FDCAN_RxHeaderTypeDef rx_header;
   uint8_t rx_data[8];
+  uint32_t pending_messages;
 
   if ((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) == 0U)
   {
     return;
   }
 
-  if (HAL_FDCAN_GetRxMessage(hfdcan, FDCAN_RX_FIFO0, &rx_header, rx_data) != HAL_OK)
+  pending_messages = HAL_FDCAN_GetRxFifoFillLevel(hfdcan,
+                                                   FDCAN_RX_FIFO0);
+  while (pending_messages > 0U)
   {
-    return;
-  }
-
-  if ((rx_header.IdType != FDCAN_STANDARD_ID) ||
-      (rx_header.DataLength != FDCAN_DLC_BYTES_8))
-  {
-    return;
-  }
-
-  if (hfdcan->Instance == FDCAN1)
-  {
-    if (rx_header.Identifier == DM3519_X_MOTOR1_MASTER_ID)
+    pending_messages--;
+    if (HAL_FDCAN_GetRxMessage(hfdcan,
+                               FDCAN_RX_FIFO0,
+                               &rx_header,
+                               rx_data) != HAL_OK)
     {
-      DM3519_DecodeFeedback(&dm3519_x_motor1,
-                            DM3519_X_MOTOR1_ID,
-                            rx_data);
+      break;
     }
-    else if (rx_header.Identifier == DM3519_X_MOTOR2_MASTER_ID)
+
+    if ((rx_header.IdType != FDCAN_STANDARD_ID) ||
+        (rx_header.DataLength != FDCAN_DLC_BYTES_8))
     {
-      DM3519_DecodeFeedback(&dm3519_x_motor2,
-                            DM3519_X_MOTOR2_ID,
-                            rx_data);
+      continue;
     }
-  }
-  else if ((hfdcan->Instance == FDCAN2) &&
-           (rx_header.Identifier == M2006_AXIS_FEEDBACK_ID))
-  {
-    M2006_Axis_OnFeedback(rx_data, HAL_GetTick());
+
+    if (hfdcan->Instance == FDCAN1)
+    {
+      if (rx_header.Identifier == DM3519_X_MOTOR1_MASTER_ID)
+      {
+        DM3519_DecodeFeedback(&dm3519_x_motor1,
+                              DM3519_X_MOTOR1_ID,
+                              rx_data);
+      }
+      else if (rx_header.Identifier == DM3519_X_MOTOR2_MASTER_ID)
+      {
+        DM3519_DecodeFeedback(&dm3519_x_motor2,
+                              DM3519_X_MOTOR2_ID,
+                              rx_data);
+      }
+    }
+    else if ((hfdcan->Instance == FDCAN2) &&
+             (rx_header.Identifier == M2006_AXIS_FEEDBACK_ID))
+    {
+      M2006_Axis_OnFeedback(rx_data, HAL_GetTick());
+    }
   }
 }
 
