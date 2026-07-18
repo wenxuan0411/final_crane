@@ -399,6 +399,11 @@
               <FilePath>../Core/Src/main.c</FilePath>
             </File>
             <File>
+              <FileName>m2006_axis.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Core/Src/m2006_axis.c</FilePath>
+            </File>
+            <File>
               <FileName>route_plan.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Core/Src/route_plan.c</FilePath>
