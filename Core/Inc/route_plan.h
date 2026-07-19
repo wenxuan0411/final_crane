@@ -6,7 +6,7 @@
 typedef struct
 {
   uint8_t x_enabled;
-  float x_target_position_rad;
+  float x_target_position_mm;
   float x_speed_rad_s;
   uint8_t y_enabled;
   float y_target_position_rev;

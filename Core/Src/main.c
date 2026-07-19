@@ -98,6 +98,17 @@ typedef struct
 #define X_TARGET_SETTLE_TIMEOUT_MS         3000U
 #define X_STOP_REPEAT_COUNT                3U
 #define X_STOP_REPEAT_INTERVAL_MS          2U
+#define X_POSITION_MIN_MM                   (-1700.0f)
+#define X_POSITION_MAX_MM                   2000.0f
+#define X_FEEDBACK_RAD_PER_MM               0.96f
+#define X_RESET_TEST_TARGET_MM              500.0f
+#define X_CALIBRATION_SPEED_RAD_S           5.0f
+#define X_CALIBRATION_ACCEL_TIME_MS         500U
+#define X_CALIBRATION_CRUISE_TIME_MS        4500U
+#define X_CALIBRATION_DECEL_TIME_MS         500U
+#define X_CALIBRATION_TOTAL_TIME_MS         (X_CALIBRATION_ACCEL_TIME_MS + \
+                                             X_CALIBRATION_CRUISE_TIME_MS + \
+                                             X_CALIBRATION_DECEL_TIME_MS)
 #define Y_TARGET_SETTLE_TIMEOUT_MS         3000U
 
 /* USER CODE END PD */
@@ -124,17 +135,34 @@ static volatile float x_motor1_position_zero_rad = 0.0f;
 static volatile float x_motor2_position_zero_rad = 0.0f;
 static volatile X_SyncFault_t x_sync_fault = X_SYNC_FAULT_NONE;
 static uint8_t x_position_reference_ready = 0U;
+static volatile uint8_t x_reset_calibration_result = 0U;
+static volatile float x_reset_calibration_final_position_rad = 0.0f;
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
+static uint8_t X_TargetMmToFeedbackRad(float target_position_mm,
+                                       float *target_position_rad);
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+static uint8_t Motion_ShouldRunAfterReset(void)
+{
+  uint8_t pin_reset;
+  uint8_t power_reset;
+
+  pin_reset = (__HAL_RCC_GET_FLAG(RCC_FLAG_PINRST) != 0U) ? 1U : 0U;
+  power_reset = ((__HAL_RCC_GET_FLAG(RCC_FLAG_PORRST) != 0U) ||
+                 (__HAL_RCC_GET_FLAG(RCC_FLAG_BORRST) != 0U)) ? 1U : 0U;
+
+  __HAL_RCC_CLEAR_RESET_FLAGS();
+  return (uint8_t)((pin_reset != 0U) && (power_reset == 0U));
+}
+
 static uint32_t FDCAN_DLC_FromLength(uint8_t len)
 {
   if (len == 4U)
@@ -426,7 +454,9 @@ static void X_Stop(void)
   }
 }
 
-static float X_ClampVelocity(float velocity_rad_s, float base_velocity_rad_s)
+static float X_ClampVelocity(float velocity_rad_s,
+                             float base_velocity_rad_s,
+                             float velocity_limit_rad_s)
 {
   if (base_velocity_rad_s > 0.0f)
   {
@@ -434,9 +464,9 @@ static float X_ClampVelocity(float velocity_rad_s, float base_velocity_rad_s)
     {
       return 0.0f;
     }
-    if (velocity_rad_s > X_RUN_SPEED_RAD_S)
+    if (velocity_rad_s > velocity_limit_rad_s)
     {
-      return X_RUN_SPEED_RAD_S;
+      return velocity_limit_rad_s;
     }
   }
   else if (base_velocity_rad_s < 0.0f)
@@ -445,9 +475,9 @@ static float X_ClampVelocity(float velocity_rad_s, float base_velocity_rad_s)
     {
       return 0.0f;
     }
-    if (velocity_rad_s < -X_RUN_SPEED_RAD_S)
+    if (velocity_rad_s < -velocity_limit_rad_s)
     {
-      return -X_RUN_SPEED_RAD_S;
+      return -velocity_limit_rad_s;
     }
   }
   else
@@ -576,7 +606,9 @@ static uint8_t X_GetSynchronizedPositions(uint32_t now,
   return 1U;
 }
 
-static void X_SetSynchronizedVelocity(float base_velocity_rad_s, uint32_t now)
+static void X_SetSynchronizedVelocityLimited(float base_velocity_rad_s,
+                                             float velocity_limit_rad_s,
+                                             uint32_t now)
 {
   float motor1_position_rad;
   float motor2_position_rad;
@@ -605,11 +637,20 @@ static void X_SetSynchronizedVelocity(float base_velocity_rad_s, uint32_t now)
 
   motor1_velocity_rad_s = X_ClampVelocity(base_velocity_rad_s -
                                            correction_rad_s,
-                                           base_velocity_rad_s);
+                                           base_velocity_rad_s,
+                                           velocity_limit_rad_s);
   motor2_velocity_rad_s = X_ClampVelocity(base_velocity_rad_s +
                                            correction_rad_s,
-                                           base_velocity_rad_s);
+                                           base_velocity_rad_s,
+                                           velocity_limit_rad_s);
   X_SetMotorVelocities(motor1_velocity_rad_s, -motor2_velocity_rad_s);
+}
+
+static void X_SetSynchronizedVelocity(float base_velocity_rad_s, uint32_t now)
+{
+  X_SetSynchronizedVelocityLimited(base_velocity_rad_s,
+                                   X_RUN_SPEED_RAD_S,
+                                   now);
 }
 
 static uint8_t X_GetAxisPosition(uint32_t now, float *position_rad)
@@ -629,7 +670,7 @@ static uint8_t X_GetAxisPosition(uint32_t now, float *position_rad)
   return 1U;
 }
 
-static uint8_t X_PrepareTargetMotion(float target_position_rad,
+static uint8_t X_PrepareTargetMotion(float target_position_mm,
                                      float speed_rad_s,
                                      uint32_t now,
                                      uint32_t *run_time_ms,
@@ -637,8 +678,11 @@ static uint8_t X_PrepareTargetMotion(float target_position_rad,
                                      float *motor_target_position_rad)
 {
   float current_position_rad;
+  float target_position_rad;
 
-  if ((X_GetAxisPosition(now, &current_position_rad) == 0U) ||
+  if ((X_TargetMmToFeedbackRad(target_position_mm,
+                               &target_position_rad) == 0U) ||
+      (X_GetAxisPosition(now, &current_position_rad) == 0U) ||
       (RoutePlan_CalculateRunTimeMs(current_position_rad,
                                     target_position_rad,
                                     speed_rad_s,
@@ -761,6 +805,116 @@ static int8_t X_TargetCorrectionUpdate(X_TargetCorrection_t *correction,
   return 0;
 }
 
+static float X_CalibrationVelocity(uint32_t elapsed_ms)
+{
+  if (elapsed_ms < X_CALIBRATION_ACCEL_TIME_MS)
+  {
+    return X_CALIBRATION_SPEED_RAD_S * (float)elapsed_ms /
+           (float)X_CALIBRATION_ACCEL_TIME_MS;
+  }
+
+  if (elapsed_ms < (X_CALIBRATION_ACCEL_TIME_MS +
+                    X_CALIBRATION_CRUISE_TIME_MS))
+  {
+    return X_CALIBRATION_SPEED_RAD_S;
+  }
+
+  if (elapsed_ms < X_CALIBRATION_TOTAL_TIME_MS)
+  {
+    return X_CALIBRATION_SPEED_RAD_S *
+           (float)(X_CALIBRATION_TOTAL_TIME_MS - elapsed_ms) /
+           (float)X_CALIBRATION_DECEL_TIME_MS;
+  }
+
+  return 0.0f;
+}
+
+static uint8_t X_TargetMmToFeedbackRad(float target_position_mm,
+                                       float *target_position_rad)
+{
+  if ((target_position_rad == 0) ||
+      (target_position_mm != target_position_mm) ||
+      (target_position_mm < X_POSITION_MIN_MM) ||
+      (target_position_mm > X_POSITION_MAX_MM))
+  {
+    return 0U;
+  }
+
+  *target_position_rad = target_position_mm * X_FEEDBACK_RAD_PER_MM;
+  return 1U;
+}
+
+static uint8_t X_RunResetCalibration(void)
+{
+  uint32_t start_tick;
+  uint32_t last_command_tick;
+  float current_position_rad;
+  float target_position_rad;
+  float final_position_rad;
+  float direction;
+  X_TargetCorrection_t correction;
+
+  if ((X_TargetMmToFeedbackRad(X_RESET_TEST_TARGET_MM,
+                               &target_position_rad) == 0U) ||
+      (X_GetAxisPosition(HAL_GetTick(), &current_position_rad) == 0U))
+  {
+    X_Stop();
+    return 0U;
+  }
+
+  direction = (target_position_rad >= current_position_rad) ? 1.0f : -1.0f;
+
+  start_tick = HAL_GetTick();
+  last_command_tick = start_tick - X_COMMAND_REFRESH_MS;
+  while (((HAL_GetTick() - start_tick) < X_CALIBRATION_TOTAL_TIME_MS) &&
+         (x_sync_fault == X_SYNC_FAULT_NONE))
+  {
+    uint32_t now = HAL_GetTick();
+
+    if ((now - last_command_tick) >= X_COMMAND_REFRESH_MS)
+    {
+      uint32_t elapsed_ms = now - start_tick;
+
+      last_command_tick = now;
+      X_SetSynchronizedVelocityLimited(direction *
+                                       X_CalibrationVelocity(elapsed_ms),
+                                       X_CALIBRATION_SPEED_RAD_S,
+                                       now);
+    }
+    HAL_Delay(1U);
+  }
+
+  if (x_sync_fault != X_SYNC_FAULT_NONE)
+  {
+    X_Stop();
+    return 0U;
+  }
+
+  X_TargetCorrectionStart(&correction, target_position_rad, HAL_GetTick());
+  while (1)
+  {
+    uint32_t now = HAL_GetTick();
+    int8_t correction_status = X_TargetCorrectionUpdate(&correction, now);
+
+    if (correction_status < 0)
+    {
+      X_Stop();
+      return 0U;
+    }
+    if (correction_status > 0)
+    {
+      X_Stop();
+      if (X_GetAxisPosition(HAL_GetTick(), &final_position_rad) == 0U)
+      {
+        return 0U;
+      }
+      x_reset_calibration_final_position_rad = final_position_rad;
+      return 1U;
+    }
+    HAL_Delay(1U);
+  }
+}
+
 static void Motion_StopAll(void)
 {
   X_Stop();
@@ -841,7 +995,7 @@ static uint8_t XY_RunSelectedAxes(const MotionSegment_t *segment,
   X_TargetCorrection_t correction;
 
   if ((run_x != 0U) &&
-      (X_PrepareTargetMotion(segment->x_target_position_rad,
+      (X_PrepareTargetMotion(segment->x_target_position_mm,
                              segment->x_speed_rad_s,
                              HAL_GetTick(),
                              &x_run_time_ms,
@@ -1031,6 +1185,8 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+  uint8_t run_reset_calibration = Motion_ShouldRunAfterReset();
+
   /* USER CODE END 1 */
 
   /* Enable the CPU Cache */
@@ -1072,10 +1228,16 @@ int main(void)
   Motion_StopAll();
   HAL_Delay(100U);
 
-  X_EnablePairedVelocityMode();
-  DM3519_RequestMappingRanges(DM3519_X_MOTOR1_ID);
-  DM3519_RequestMappingRanges(DM3519_X_MOTOR2_ID);
-  HAL_Delay(20U);
+  if (run_reset_calibration != 0U)
+  {
+    X_EnablePairedVelocityMode();
+    DM3519_RequestMappingRanges(DM3519_X_MOTOR1_ID);
+    DM3519_RequestMappingRanges(DM3519_X_MOTOR2_ID);
+    X_SetPairedVelocity(0.0f);
+    HAL_Delay(20U);
+
+    x_reset_calibration_result = X_RunResetCalibration() ? 1U : 2U;
+  }
 
   /* USER CODE END 2 */
 

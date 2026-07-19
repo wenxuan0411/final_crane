@@ -9,7 +9,7 @@
 
 /*
  * Route template format:
- * { X enabled, X target (rad), X speed (rad/s),
+ * { X enabled, X absolute target (mm), X speed (rad/s),
  *   Y enabled, Y target (rev), Y speed (rpm), synchronized }
  * Revision: both axes may be enabled only for synchronized motion. A
  * non-synchronized segment controls exactly one axis; synchronization is
@@ -26,8 +26,8 @@ static const MotionSegment_t route_1_to_4[] =
 
 static const MotionSegment_t route_1_to_5[] =
 {
-  {1U, -42.030f, 10.0f, 1U, 200.0f, 3000U, 1U},
-  {1U, -135.375f, 15.0f, 1U, -28.0f, 3600U, 1U},
+  {1U, -43.781250f, 10.0f, 1U, 200.0f, 3000U, 1U},
+  {1U, -141.015625f, 15.0f, 1U, -28.0f, 3600U, 1U},
 };
 
 static const MotionSegment_t route_1_to_6[] =
@@ -245,7 +245,7 @@ uint8_t RoutePlan_ValidateSegment(const MotionSegment_t *segment)
   }
 
   if ((segment->x_enabled != 0U) &&
-      ((RoutePlan_IsFinite(segment->x_target_position_rad) == 0U) ||
+      ((RoutePlan_IsFinite(segment->x_target_position_mm) == 0U) ||
        (RoutePlan_IsFinite(segment->x_speed_rad_s) == 0U) ||
        (segment->x_speed_rad_s <= 0.0f) ||
        (segment->x_speed_rad_s > ROUTE_X_MAX_SPEED_RAD_S)))
