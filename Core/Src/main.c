@@ -101,10 +101,8 @@ typedef struct
 #define X_POSITION_MIN_MM                   (-1700.0f)
 #define X_POSITION_MAX_MM                   2000.0f
 #define X_FEEDBACK_RAD_PER_MM               0.96f
-#define X_RESET_TEST_TARGET_MM              500.0f
-#define X_CALIBRATION_SPEED_RAD_S           5.0f
 #define X_CALIBRATION_ACCEL_TIME_MS         500U
-#define X_CALIBRATION_CRUISE_TIME_MS        4500U
+#define X_CALIBRATION_CRUISE_TIME_MS        20100U
 #define X_CALIBRATION_DECEL_TIME_MS         500U
 #define X_CALIBRATION_TOTAL_TIME_MS         (X_CALIBRATION_ACCEL_TIME_MS + \
                                              X_CALIBRATION_CRUISE_TIME_MS + \
@@ -130,6 +128,10 @@ static volatile DM3519_Feedback_t dm3519_x_motor2 = {
   .pmax_rad = DM3519_FALLBACK_PMAX_RAD,
   .vmax_rad_s = DM3519_FALLBACK_VMAX_RAD_S,
   .tmax_nm = DM3519_FALLBACK_TMAX_NM
+};
+static const MotionSegment_t x_reset_calibration_segment =
+{
+  1U, -2060.0f, 5.0f, 0U, 0.0f, 0U, 0U
 };
 static volatile float x_motor1_position_zero_rad = 0.0f;
 static volatile float x_motor2_position_zero_rad = 0.0f;
@@ -805,23 +807,24 @@ static int8_t X_TargetCorrectionUpdate(X_TargetCorrection_t *correction,
   return 0;
 }
 
-static float X_CalibrationVelocity(uint32_t elapsed_ms)
+static float X_CalibrationVelocity(uint32_t elapsed_ms,
+                                   float peak_velocity_rad_s)
 {
   if (elapsed_ms < X_CALIBRATION_ACCEL_TIME_MS)
   {
-    return X_CALIBRATION_SPEED_RAD_S * (float)elapsed_ms /
+    return peak_velocity_rad_s * (float)elapsed_ms /
            (float)X_CALIBRATION_ACCEL_TIME_MS;
   }
 
   if (elapsed_ms < (X_CALIBRATION_ACCEL_TIME_MS +
                     X_CALIBRATION_CRUISE_TIME_MS))
   {
-    return X_CALIBRATION_SPEED_RAD_S;
+    return peak_velocity_rad_s;
   }
 
   if (elapsed_ms < X_CALIBRATION_TOTAL_TIME_MS)
   {
-    return X_CALIBRATION_SPEED_RAD_S *
+    return peak_velocity_rad_s *
            (float)(X_CALIBRATION_TOTAL_TIME_MS - elapsed_ms) /
            (float)X_CALIBRATION_DECEL_TIME_MS;
   }
@@ -844,7 +847,7 @@ static uint8_t X_TargetMmToFeedbackRad(float target_position_mm,
   return 1U;
 }
 
-static uint8_t X_RunResetCalibration(void)
+static uint8_t X_RunResetCalibration(const MotionSegment_t *segment)
 {
   uint32_t start_tick;
   uint32_t last_command_tick;
@@ -854,9 +857,19 @@ static uint8_t X_RunResetCalibration(void)
   float direction;
   X_TargetCorrection_t correction;
 
-  if ((X_TargetMmToFeedbackRad(X_RESET_TEST_TARGET_MM,
-                               &target_position_rad) == 0U) ||
-      (X_GetAxisPosition(HAL_GetTick(), &current_position_rad) == 0U))
+  if ((segment == 0) ||
+      (segment->x_enabled == 0U) ||
+      (segment->y_enabled != 0U) ||
+      (RoutePlan_ValidateSegment(segment) == 0U))
+  {
+    X_Stop();
+    return 0U;
+  }
+
+  /* Reset calibration is relative to the reset position, not route limits. */
+  target_position_rad = segment->x_target_position_mm *
+                        X_FEEDBACK_RAD_PER_MM;
+  if (X_GetAxisPosition(HAL_GetTick(), &current_position_rad) == 0U)
   {
     X_Stop();
     return 0U;
@@ -877,8 +890,10 @@ static uint8_t X_RunResetCalibration(void)
 
       last_command_tick = now;
       X_SetSynchronizedVelocityLimited(direction *
-                                       X_CalibrationVelocity(elapsed_ms),
-                                       X_CALIBRATION_SPEED_RAD_S,
+                                       X_CalibrationVelocity(
+                                         elapsed_ms,
+                                         segment->x_speed_rad_s),
+                                       segment->x_speed_rad_s,
                                        now);
     }
     HAL_Delay(1U);
@@ -1236,7 +1251,8 @@ int main(void)
     X_SetPairedVelocity(0.0f);
     HAL_Delay(20U);
 
-    x_reset_calibration_result = X_RunResetCalibration() ? 1U : 2U;
+    x_reset_calibration_result =
+      X_RunResetCalibration(&x_reset_calibration_segment) ? 1U : 2U;
   }
 
   /* USER CODE END 2 */
