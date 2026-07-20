@@ -7,6 +7,8 @@
 #define M2006_SPEED_INTEGRAL_LIMIT        2500.0f
 #define M2006_ACCEL_LIMIT_RPM_S           18000.0f
 #define M2006_MAX_ALLOWED_RPM             6000
+#define M2006_HOLD_POSITION_KP_RPM_REV     120.0f
+#define M2006_HOLD_MAX_SPEED_RPM           300.0f
 #define M2006_CONTROL_PERIOD_MS           10U
 #define M2006_FEEDBACK_TIMEOUT_MS         100U
 #define M2006_STOP_REPEAT_COUNT           3U
@@ -32,6 +34,7 @@ typedef struct
   int16_t target_speed_rpm;
   float command_speed_rpm;
   float speed_integral;
+  float hold_target_position_rev;
   uint32_t last_control_ms;
   M2006_AxisState_t state;
   M2006_AxisFault_t fault;
@@ -191,6 +194,7 @@ HAL_StatusTypeDef M2006_Axis_Init(FDCAN_HandleTypeDef *hfdcan)
   m2006_axis.target_speed_rpm = 0;
   m2006_axis.command_speed_rpm = 0.0f;
   m2006_axis.speed_integral = 0.0f;
+  m2006_axis.hold_target_position_rev = 0.0f;
   m2006_axis.state = M2006_AXIS_IDLE;
   m2006_axis.fault = M2006_AXIS_FAULT_NONE;
 
@@ -303,14 +307,49 @@ uint8_t M2006_Axis_SetSpeedTarget(int16_t target_rpm)
   return 1U;
 }
 
+uint8_t M2006_Axis_StartPositionHold(float target_position_rev)
+{
+  float current_position_rev;
+  uint32_t now_ms = HAL_GetTick();
+
+  if (target_position_rev != target_position_rev)
+  {
+    return 0U;
+  }
+  if (m2006_axis.feedback_ready == 0U)
+  {
+    M2006_SetFault(M2006_AXIS_FAULT_NO_FEEDBACK);
+    return 0U;
+  }
+  if (((now_ms - m2006_axis.feedback_tick_ms) >
+       M2006_FEEDBACK_TIMEOUT_MS) ||
+      (M2006_Axis_GetPositionRev(&current_position_rev) == 0U))
+  {
+    M2006_SetFault(M2006_AXIS_FAULT_FEEDBACK_TIMEOUT);
+    return 0U;
+  }
+
+  m2006_axis.hold_target_position_rev = target_position_rev;
+  m2006_axis.target_speed_rpm = 0;
+  m2006_axis.command_speed_rpm = 0.0f;
+  m2006_axis.speed_integral = 0.0f;
+  m2006_axis.last_control_ms = now_ms;
+  m2006_axis.fault = M2006_AXIS_FAULT_NONE;
+  m2006_axis.state = M2006_AXIS_HOLDING;
+  return 1U;
+}
+
 void M2006_Axis_Update(uint32_t now_ms)
 {
   uint32_t elapsed_ms;
   float dt_s;
   float speed_step;
+  float current_position_rev;
+  float hold_speed_rpm;
   int16_t current;
 
-  if (m2006_axis.state != M2006_AXIS_RUNNING)
+  if ((m2006_axis.state != M2006_AXIS_RUNNING) &&
+      (m2006_axis.state != M2006_AXIS_HOLDING))
   {
     return;
   }
@@ -331,6 +370,30 @@ void M2006_Axis_Update(uint32_t now_ms)
   if (dt_s > 0.05f)
   {
     dt_s = 0.05f;
+  }
+
+  if (m2006_axis.state == M2006_AXIS_HOLDING)
+  {
+    if (M2006_Axis_GetPositionRev(&current_position_rev) == 0U)
+    {
+      M2006_SetFault(M2006_AXIS_FAULT_FEEDBACK_TIMEOUT);
+      return;
+    }
+
+    hold_speed_rpm = M2006_HOLD_POSITION_KP_RPM_REV *
+                     (m2006_axis.hold_target_position_rev -
+                      current_position_rev);
+    hold_speed_rpm = M2006_ClampFloat(hold_speed_rpm,
+                                      -M2006_HOLD_MAX_SPEED_RPM,
+                                      M2006_HOLD_MAX_SPEED_RPM);
+    if (hold_speed_rpm >= 0.0f)
+    {
+      m2006_axis.target_speed_rpm = (int16_t)(hold_speed_rpm + 0.5f);
+    }
+    else
+    {
+      m2006_axis.target_speed_rpm = (int16_t)(hold_speed_rpm - 0.5f);
+    }
   }
 
   speed_step = M2006_ACCEL_LIMIT_RPM_S * dt_s;

@@ -10,7 +10,7 @@
 /*
  * Route template format:
  * { X enabled, X absolute target (mm), X speed (rad/s),
- *   Y enabled, Y target (rev), Y speed (rpm), synchronized }
+ *   Y enabled, Y absolute target (mm), Y speed (rpm), synchronized }
  * Revision: both axes may be enabled only for synchronized motion. A
  * non-synchronized segment controls exactly one axis; synchronization is
  * ignored for one axis.
@@ -21,13 +21,14 @@
 
 static const MotionSegment_t route_1_to_4[] =
 {
-  UNCONFIGURED_STEP,
+  {0U, 0.0f, 0.0f, 1U, -504.0f, 3600U, 0U},
+  {1U, -1000.0f, 15.0f, 0U, 0.0f, 0U, 0U},
 };
 
 static const MotionSegment_t route_1_to_5[] =
 {
-  {1U, -43.781250f, 10.0f, 1U, 200.0f, 3000U, 1U},
-  {1U, -141.015625f, 15.0f, 1U, -28.0f, 3600U, 1U},
+  {1U, -43.781250f, 10.0f, 1U, 445.297516f, 3000U, 1U},
+  {1U, -141.015625f, 15.0f, 1U, -62.341652f, 3600U, 1U},
 };
 
 static const MotionSegment_t route_1_to_6[] =
@@ -172,7 +173,7 @@ static const MotionSegment_t route_8_to_3[] =
 
 static const RoutePlan_t route_table[] =
 {
-  {1U, 4U, route_1_to_4, (uint8_t)ARRAY_SIZE(route_1_to_4), 0U},
+  {1U, 4U, route_1_to_4, (uint8_t)ARRAY_SIZE(route_1_to_4), 1U},
   {1U, 5U, route_1_to_5, (uint8_t)ARRAY_SIZE(route_1_to_5), 1U},
   {1U, 6U, route_1_to_6, (uint8_t)ARRAY_SIZE(route_1_to_6), 0U},
   {1U, 7U, route_1_to_7, (uint8_t)ARRAY_SIZE(route_1_to_7), 0U},
@@ -254,7 +255,9 @@ uint8_t RoutePlan_ValidateSegment(const MotionSegment_t *segment)
   }
 
   if ((segment->y_enabled != 0U) &&
-      ((RoutePlan_IsFinite(segment->y_target_position_rev) == 0U) ||
+      ((RoutePlan_IsFinite(segment->y_target_position_mm) == 0U) ||
+       (segment->y_target_position_mm < ROUTE_Y_POSITION_MIN_MM) ||
+       (segment->y_target_position_mm > ROUTE_Y_POSITION_MAX_MM) ||
        (segment->y_speed_rpm == 0U) ||
        (segment->y_speed_rpm > ROUTE_Y_MAX_SPEED_RPM)))
   {

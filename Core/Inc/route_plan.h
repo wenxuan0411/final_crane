@@ -3,13 +3,17 @@
 
 #include <stdint.h>
 
+#define ROUTE_Y_FEEDBACK_REV_PER_MM  0.44913793f
+#define ROUTE_Y_POSITION_MIN_MM      (-920.0f)
+#define ROUTE_Y_POSITION_MAX_MM      1220.0f
+
 typedef struct
 {
   uint8_t x_enabled;
   float x_target_position_mm;
   float x_speed_rad_s;
   uint8_t y_enabled;
-  float y_target_position_rev;
+  float y_target_position_mm;
   uint16_t y_speed_rpm;
   uint8_t synchronized;
 } MotionSegment_t;

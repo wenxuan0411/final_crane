@@ -11,6 +11,7 @@ typedef enum
 {
   M2006_AXIS_IDLE = 0,
   M2006_AXIS_RUNNING,
+  M2006_AXIS_HOLDING,
   M2006_AXIS_FAULT
 } M2006_AxisState_t;
 
@@ -27,6 +28,7 @@ void M2006_Axis_OnFeedback(const uint8_t data[8], uint32_t now_ms);
 
 uint8_t M2006_Axis_StartSpeed(int16_t target_rpm);
 uint8_t M2006_Axis_SetSpeedTarget(int16_t target_rpm);
+uint8_t M2006_Axis_StartPositionHold(float target_position_rev);
 void M2006_Axis_Update(uint32_t now_ms);
 void M2006_Axis_Stop(void);
 
