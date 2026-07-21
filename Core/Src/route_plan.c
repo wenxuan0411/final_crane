@@ -5,174 +5,212 @@
 /* Revision: raise the X path-speed validation limit from 15 to 35 rad/s. */
 #define ROUTE_X_MAX_SPEED_RAD_S 35.0f
 #define ROUTE_Y_MAX_SPEED_RPM   6000U
-#define UNCONFIGURED_STEP       {0U, 0.0f, 0.0f, 0U, 0.0f, 0U, 0U}
+#define Y_SEGMENT(target_mm, speed_rpm) \
+  {target_mm, speed_rpm, 0U, 0.0f}
+#define Y_SEGMENT_AFTER_X(target_mm, speed_rpm, x_trigger_mm) \
+  {target_mm, speed_rpm, 1U, x_trigger_mm}
+#define X_ONLY_GROUP(x_target_mm, x_speed) \
+  {1U, x_target_mm, x_speed, 0, 0U}
+#define Y_ONLY_GROUP(y_list) \
+  {0U, 0.0f, 0.0f, y_list, (uint8_t)ARRAY_SIZE(y_list)}
+#define XY_GROUP(x_target_mm, x_speed, y_list) \
+  {1U, x_target_mm, x_speed, y_list, (uint8_t)ARRAY_SIZE(y_list)}
+#define UNCONFIGURED_GROUP {0U, 0.0f, 0.0f, 0, 0U}
 
 /*
- * Route template format:
- * { X enabled, X absolute target (mm), X speed (rad/s),
- *   Y enabled, Y absolute target (mm), Y speed (rpm), synchronized }
- * Revision: both axes may be enabled only for synchronized motion. A
- * non-synchronized segment controls exactly one axis; synchronization is
- * ignored for one axis.
+ * A motion group contains zero or one X motion and zero or more consecutive
+ * Y motions. X and the first Y segment start together. Later Y segments start
+ * as soon as the previous Y target is reached without restarting X, unless
+ * Y_SEGMENT_AFTER_X is used to wait for an X feedback position first.
+ *
+ * X-only group: set y_segments = 0 and y_segment_count = 0U.
+ * Y-only group: set x_enabled = 0U and provide one or more Y segments.
  *
  * Keep configured = 0U in route_table until all segments of that route
  * have been measured and filled in.
  */
 
-static const MotionSegment_t route_1_to_4[] =
+static const YMotionSegment_t route_1_to_4_y[] =
 {
-  {0U, 0.0f, 0.0f, 1U, -504.0f, 3600U, 0U},
-  {1U, -1000.0f, 15.0f, 0U, 0.0f, 0U, 0U},
+  Y_SEGMENT(-366.0f, 3600U),
 };
 
-static const MotionSegment_t route_1_to_5[] =
+static const MotionGroup_t route_1_to_4[] =
 {
-  {1U, -43.781250f, 10.0f, 1U, 445.297516f, 3000U, 1U},
-  {1U, -141.015625f, 15.0f, 1U, -62.341652f, 3600U, 1U},
+  XY_GROUP(1610.0f, 5.0f, route_1_to_4_y),
 };
 
-static const MotionSegment_t route_1_to_6[] =
+static const YMotionSegment_t route_1_to_5_y1[] =
 {
-  UNCONFIGURED_STEP,
+  Y_SEGMENT(445.297516f, 3000U),
 };
 
-static const MotionSegment_t route_1_to_7[] =
+static const YMotionSegment_t route_1_to_5_y2[] =
 {
-  UNCONFIGURED_STEP,
+  Y_SEGMENT(-62.341652f, 3600U),
 };
 
-static const MotionSegment_t route_1_to_8[] =
+static const MotionGroup_t route_1_to_5[] =
 {
-  UNCONFIGURED_STEP,
+  XY_GROUP(-43.781250f, 10.0f, route_1_to_5_y1),
+  XY_GROUP(-141.015625f, 15.0f, route_1_to_5_y2),
 };
 
-static const MotionSegment_t route_2_to_4[] =
+/* PA15 motion test, relative to the X/Y positions established at startup. */
+static const YMotionSegment_t xy_motion_test_y[] =
 {
-  UNCONFIGURED_STEP,
+  Y_SEGMENT(0.0f, 3600U),
+  Y_SEGMENT_AFTER_X(500.0f, 3600U, -1350.0f),
 };
 
-static const MotionSegment_t route_2_to_5[] =
+static const MotionGroup_t xy_motion_test[] =
 {
-  UNCONFIGURED_STEP,
+  XY_GROUP(-2700.0f, 5.0f, xy_motion_test_y),
 };
 
-static const MotionSegment_t route_2_to_6[] =
+static const MotionGroup_t route_1_to_6[] =
 {
-  UNCONFIGURED_STEP,
+  UNCONFIGURED_GROUP,
 };
 
-static const MotionSegment_t route_2_to_7[] =
+static const MotionGroup_t route_1_to_7[] =
 {
-  UNCONFIGURED_STEP,
+  UNCONFIGURED_GROUP,
 };
 
-static const MotionSegment_t route_2_to_8[] =
+static const MotionGroup_t route_1_to_8[] =
 {
-  UNCONFIGURED_STEP,
+  UNCONFIGURED_GROUP,
 };
 
-static const MotionSegment_t route_3_to_4[] =
+static const MotionGroup_t route_2_to_4[] =
 {
-  UNCONFIGURED_STEP,
+  UNCONFIGURED_GROUP,
 };
 
-static const MotionSegment_t route_3_to_5[] =
+static const MotionGroup_t route_2_to_5[] =
 {
-  UNCONFIGURED_STEP,
+  UNCONFIGURED_GROUP,
 };
 
-static const MotionSegment_t route_3_to_6[] =
+static const MotionGroup_t route_2_to_6[] =
 {
-  UNCONFIGURED_STEP,
+  UNCONFIGURED_GROUP,
 };
 
-static const MotionSegment_t route_3_to_7[] =
+static const MotionGroup_t route_2_to_7[] =
 {
-  UNCONFIGURED_STEP,
+  UNCONFIGURED_GROUP,
 };
 
-static const MotionSegment_t route_3_to_8[] =
+static const MotionGroup_t route_2_to_8[] =
 {
-  UNCONFIGURED_STEP,
+  UNCONFIGURED_GROUP,
 };
 
-static const MotionSegment_t route_4_to_1[] =
+static const MotionGroup_t route_3_to_4[] =
 {
-  UNCONFIGURED_STEP,
+  UNCONFIGURED_GROUP,
 };
 
-static const MotionSegment_t route_4_to_2[] =
+static const MotionGroup_t route_3_to_5[] =
 {
-  UNCONFIGURED_STEP,
+  UNCONFIGURED_GROUP,
 };
 
-static const MotionSegment_t route_4_to_3[] =
+static const MotionGroup_t route_3_to_6[] =
 {
-  UNCONFIGURED_STEP,
+  UNCONFIGURED_GROUP,
 };
 
-static const MotionSegment_t route_5_to_1[] =
+static const MotionGroup_t route_3_to_7[] =
 {
-  UNCONFIGURED_STEP,
+  UNCONFIGURED_GROUP,
 };
 
-static const MotionSegment_t route_5_to_2[] =
+static const MotionGroup_t route_3_to_8[] =
 {
-  UNCONFIGURED_STEP,
+  UNCONFIGURED_GROUP,
 };
 
-static const MotionSegment_t route_5_to_3[] =
+static const MotionGroup_t route_4_to_1[] =
 {
-  UNCONFIGURED_STEP,
+  UNCONFIGURED_GROUP,
 };
 
-static const MotionSegment_t route_6_to_1[] =
+static const MotionGroup_t route_4_to_2[] =
 {
-  UNCONFIGURED_STEP,
+  UNCONFIGURED_GROUP,
 };
 
-static const MotionSegment_t route_6_to_2[] =
+static const MotionGroup_t route_4_to_3[] =
 {
-  UNCONFIGURED_STEP,
+  UNCONFIGURED_GROUP,
 };
 
-static const MotionSegment_t route_6_to_3[] =
+static const MotionGroup_t route_5_to_1[] =
 {
-  UNCONFIGURED_STEP,
+  UNCONFIGURED_GROUP,
 };
 
-static const MotionSegment_t route_7_to_1[] =
+static const MotionGroup_t route_5_to_2[] =
 {
-  UNCONFIGURED_STEP,
+  UNCONFIGURED_GROUP,
 };
 
-static const MotionSegment_t route_7_to_2[] =
+static const MotionGroup_t route_5_to_3[] =
 {
-  UNCONFIGURED_STEP,
+  UNCONFIGURED_GROUP,
 };
 
-static const MotionSegment_t route_7_to_3[] =
+static const MotionGroup_t route_6_to_1[] =
 {
-  UNCONFIGURED_STEP,
+  UNCONFIGURED_GROUP,
 };
 
-static const MotionSegment_t route_8_to_1[] =
+static const MotionGroup_t route_6_to_2[] =
 {
-  UNCONFIGURED_STEP,
+  UNCONFIGURED_GROUP,
 };
 
-static const MotionSegment_t route_8_to_2[] =
+static const MotionGroup_t route_6_to_3[] =
 {
-  UNCONFIGURED_STEP,
+  UNCONFIGURED_GROUP,
 };
 
-static const MotionSegment_t route_8_to_3[] =
+static const MotionGroup_t route_7_to_1[] =
 {
-  UNCONFIGURED_STEP,
+  UNCONFIGURED_GROUP,
+};
+
+static const MotionGroup_t route_7_to_2[] =
+{
+  UNCONFIGURED_GROUP,
+};
+
+static const MotionGroup_t route_7_to_3[] =
+{
+  UNCONFIGURED_GROUP,
+};
+
+static const MotionGroup_t route_8_to_1[] =
+{
+  UNCONFIGURED_GROUP,
+};
+
+static const MotionGroup_t route_8_to_2[] =
+{
+  UNCONFIGURED_GROUP,
+};
+
+static const MotionGroup_t route_8_to_3[] =
+{
+  UNCONFIGURED_GROUP,
 };
 
 static const RoutePlan_t route_table[] =
 {
+  {0U, 0U, xy_motion_test, (uint8_t)ARRAY_SIZE(xy_motion_test), 1U},
   {1U, 4U, route_1_to_4, (uint8_t)ARRAY_SIZE(route_1_to_4), 1U},
   {1U, 5U, route_1_to_5, (uint8_t)ARRAY_SIZE(route_1_to_5), 1U},
   {1U, 6U, route_1_to_6, (uint8_t)ARRAY_SIZE(route_1_to_6), 0U},
@@ -234,34 +272,41 @@ static uint8_t RoutePlan_IsFinite(float value)
           (value >= -FLT_MAX)) ? 1U : 0U;
 }
 
-uint8_t RoutePlan_ValidateSegment(const MotionSegment_t *segment)
+uint8_t RoutePlan_ValidateGroup(const MotionGroup_t *group)
 {
-  if ((segment == 0) ||
-      ((segment->x_enabled == 0U) && (segment->y_enabled == 0U)) ||
-      ((segment->x_enabled != 0U) &&
-       (segment->y_enabled != 0U) &&
-       (segment->synchronized == 0U)))
+  uint8_t y_index;
+
+  if ((group == 0) ||
+      ((group->x_enabled == 0U) && (group->y_segment_count == 0U)) ||
+      ((group->y_segments == 0) != (group->y_segment_count == 0U)))
   {
     return 0U;
   }
 
-  if ((segment->x_enabled != 0U) &&
-      ((RoutePlan_IsFinite(segment->x_target_position_mm) == 0U) ||
-       (RoutePlan_IsFinite(segment->x_speed_rad_s) == 0U) ||
-       (segment->x_speed_rad_s <= 0.0f) ||
-       (segment->x_speed_rad_s > ROUTE_X_MAX_SPEED_RAD_S)))
+  if ((group->x_enabled != 0U) &&
+      ((RoutePlan_IsFinite(group->x_target_position_mm) == 0U) ||
+       (RoutePlan_IsFinite(group->x_speed_rad_s) == 0U) ||
+       (group->x_speed_rad_s <= 0.0f) ||
+       (group->x_speed_rad_s > ROUTE_X_MAX_SPEED_RAD_S)))
   {
     return 0U;
   }
 
-  if ((segment->y_enabled != 0U) &&
-      ((RoutePlan_IsFinite(segment->y_target_position_mm) == 0U) ||
-       (segment->y_target_position_mm < ROUTE_Y_POSITION_MIN_MM) ||
-       (segment->y_target_position_mm > ROUTE_Y_POSITION_MAX_MM) ||
-       (segment->y_speed_rpm == 0U) ||
-       (segment->y_speed_rpm > ROUTE_Y_MAX_SPEED_RPM)))
+  for (y_index = 0U; y_index < group->y_segment_count; y_index++)
   {
-    return 0U;
+    const YMotionSegment_t *segment = &group->y_segments[y_index];
+
+    if ((RoutePlan_IsFinite(segment->y_target_position_mm) == 0U) ||
+        (segment->y_target_position_mm < ROUTE_Y_POSITION_MIN_MM) ||
+        (segment->y_target_position_mm > ROUTE_Y_POSITION_MAX_MM) ||
+        (segment->y_speed_rpm == 0U) ||
+        (segment->y_speed_rpm > ROUTE_Y_MAX_SPEED_RPM) ||
+        ((segment->wait_for_x_position != 0U) &&
+         ((group->x_enabled == 0U) ||
+          (RoutePlan_IsFinite(segment->x_trigger_position_mm) == 0U))))
+    {
+      return 0U;
+    }
   }
 
   return 1U;

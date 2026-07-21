@@ -54,6 +54,19 @@ void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
 
+uint8_t Z_move(float target_position_mm, float speed_rad_s);
+extern volatile uint8_t z_feedback_valid;
+extern volatile uint8_t z_feedback_error;
+extern volatile uint8_t z_feedback_gear_ratio_valid;
+extern volatile uint32_t z_feedback_message_count;
+extern volatile float z_feedback_position_rad;
+extern volatile float z_feedback_unwrapped_rad;
+extern volatile float z_feedback_delta_rad;
+extern volatile float z_feedback_velocity_rad_s;
+extern volatile float z_feedback_torque_nm;
+extern volatile float z_feedback_position_mm;
+extern volatile float z_feedback_gear_ratio;
+
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/

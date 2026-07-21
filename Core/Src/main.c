@@ -42,12 +42,14 @@ typedef struct
   float position_unwrapped_rad;
   float velocity_rad_s;
   float torque_nm;
+  float gear_ratio;
   float pmax_rad;
   float vmax_rad_s;
   float tmax_nm;
   uint32_t msg_count;
   uint32_t last_feedback_tick;
   uint8_t position_initialized;
+  uint8_t gear_ratio_received;
 } DM3519_Feedback_t;
 
 typedef enum
@@ -63,18 +65,22 @@ typedef enum
 /* USER CODE BEGIN PD */
 #define DM3519_X_MOTOR1_ID                 0x01U
 #define DM3519_X_MOTOR2_ID                 0x02U
+#define DM3519_Z_MOTOR_ID                  0x05U
 #define DM3519_X_MOTOR1_MASTER_ID          0x03U
 #define DM3519_X_MOTOR2_MASTER_ID          0x04U
+#define DM3519_Z_MOTOR_MASTER_ID           0x06U
 #define DM3519_VELOCITY_MODE_ID            0x200U
 #define DM3519_CONTROL_STD_ID(id)          (DM3519_VELOCITY_MODE_ID + (id))
 #define DM3519_PARAM_STD_ID                0x7FFU
 #define DM3519_PARAM_READ_CMD              0x33U
+#define DM3519_PARAM_GEAR_RATIO_RID        0x14U
 #define DM3519_PARAM_PMAX_RID              0x15U
 #define DM3519_PARAM_VMAX_RID              0x16U
 #define DM3519_PARAM_TMAX_RID              0x17U
 #define DM3519_FALLBACK_PMAX_RAD           12.5f
 #define DM3519_FALLBACK_VMAX_RAD_S         45.0f
 #define DM3519_FALLBACK_TMAX_NM            18.0f
+#define DM3519_FALLBACK_GEAR_RATIO          (3591.0f / 187.0f)
 #define X_RUN_SPEED_RAD_S                  35.0f
 #define X_FEEDBACK_RAD_PER_MM               (2.0f / 39.8f)
 #define X_COMMAND_REFRESH_MS               20U
@@ -93,8 +99,21 @@ typedef enum
 #define X_FEEDBACK_ACQUIRE_TIMEOUT_MS      300U
 #define X_STOP_REPEAT_COUNT                3U
 #define X_STOP_REPEAT_INTERVAL_MS          2U
-#define X_POSITION_MIN_MM                   (-1700.0f)
-#define X_POSITION_MAX_MM                   2000.0f
+#define X_POSITION_MIN_MM                   (-2750.0f)
+#define X_POSITION_MAX_MM                   2900.0f
+#define Z_OUTPUT_MM_PER_RAD                 26.998f
+#define Z_POSITION_MIN_MM                   0.0f
+#define Z_POSITION_MAX_MM                   293.0f
+#define Z_POSITION_TOLERANCE_MM             0.5f
+#define Z_APPROACH_TIME_S                   0.10f
+#define Z_TEST_TARGET_POSITION_MM           285.0f
+#define Z_TEST_SPEED_RAD_S                  5.0f
+#define Z_COMMAND_REFRESH_MS                20U
+#define Z_FEEDBACK_TIMEOUT_MS               100U
+#define Z_FEEDBACK_ACQUIRE_TIMEOUT_MS       300U
+#define Z_MOVE_TIMEOUT_MARGIN_MS            1000U
+#define Z_STOP_REPEAT_COUNT                 3U
+#define Z_STOP_REPEAT_INTERVAL_MS           2U
 #define Y_TARGET_SETTLE_TIMEOUT_MS         3000U
 #define Y_APPROACH_KP_RPM_REV               120.0f
 #define Y_HOLD_ENTRY_TOLERANCE_MM           2.0f
@@ -112,22 +131,44 @@ typedef enum
 
 /* USER CODE BEGIN PV */
 static volatile DM3519_Feedback_t dm3519_x_motor1 = {
+  .gear_ratio = DM3519_FALLBACK_GEAR_RATIO,
   .pmax_rad = DM3519_FALLBACK_PMAX_RAD,
   .vmax_rad_s = DM3519_FALLBACK_VMAX_RAD_S,
   .tmax_nm = DM3519_FALLBACK_TMAX_NM
 };
 static volatile DM3519_Feedback_t dm3519_x_motor2 = {
+  .gear_ratio = DM3519_FALLBACK_GEAR_RATIO,
   .pmax_rad = DM3519_FALLBACK_PMAX_RAD,
   .vmax_rad_s = DM3519_FALLBACK_VMAX_RAD_S,
   .tmax_nm = DM3519_FALLBACK_TMAX_NM
 };
+static volatile DM3519_Feedback_t dm3519_z_motor = {
+  .gear_ratio = DM3519_FALLBACK_GEAR_RATIO,
+  .pmax_rad = DM3519_FALLBACK_PMAX_RAD,
+  .vmax_rad_s = DM3519_FALLBACK_VMAX_RAD_S,
+  .tmax_nm = DM3519_FALLBACK_TMAX_NM
+};
+static volatile float z_position_zero_rad = 0.0f;
+static volatile uint8_t z_position_reference_ready = 0U;
 static volatile float x_motor1_position_zero_rad = 0.0f;
 static volatile float x_motor2_position_zero_rad = 0.0f;
 static volatile X_SyncFault_t x_sync_fault = X_SYNC_FAULT_NONE;
 static uint8_t x_position_reference_ready = 0U;
 volatile float y_calibration_position_rev = 0.0f;
 volatile uint8_t y_calibration_position_valid = 0U;
-volatile uint8_t route_1_to_4_result = 0U;
+volatile uint8_t z_jog_result = 0U;
+volatile uint8_t xy_test_result = 0U;
+volatile uint8_t z_feedback_valid = 0U;
+volatile uint8_t z_feedback_error = 0U;
+volatile uint8_t z_feedback_gear_ratio_valid = 0U;
+volatile uint32_t z_feedback_message_count = 0U;
+volatile float z_feedback_position_rad = 0.0f;
+volatile float z_feedback_unwrapped_rad = 0.0f;
+volatile float z_feedback_delta_rad = 0.0f;
+volatile float z_feedback_velocity_rad_s = 0.0f;
+volatile float z_feedback_torque_nm = 0.0f;
+volatile float z_feedback_position_mm = 0.0f;
+volatile float z_feedback_gear_ratio = DM3519_FALLBACK_GEAR_RATIO;
 
 /* USER CODE END PV */
 
@@ -237,6 +278,13 @@ static void DM3519_CAN1_Start(void)
     Error_Handler();
   }
 
+  filter.FilterIndex = 2U;
+  filter.FilterID1 = DM3519_Z_MOTOR_MASTER_ID;
+  if (HAL_FDCAN_ConfigFilter(&hfdcan1, &filter) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
   if (HAL_FDCAN_ConfigGlobalFilter(&hfdcan1,
                                    FDCAN_REJECT,
                                    FDCAN_REJECT,
@@ -271,6 +319,8 @@ static void DM3519_RequestMappingRange(uint8_t motor_id, uint8_t rid)
 
 static void DM3519_RequestMappingRanges(uint8_t motor_id)
 {
+  DM3519_RequestMappingRange(motor_id, DM3519_PARAM_GEAR_RATIO_RID);
+  HAL_Delay(2U);
   DM3519_RequestMappingRange(motor_id, DM3519_PARAM_PMAX_RID);
   HAL_Delay(2U);
   DM3519_RequestMappingRange(motor_id, DM3519_PARAM_VMAX_RID);
@@ -316,7 +366,12 @@ static uint8_t DM3519_DecodeMappingRange(volatile DM3519_Feedback_t *motor,
     return 1U;
   }
 
-  if (data[3] == DM3519_PARAM_PMAX_RID)
+  if (data[3] == DM3519_PARAM_GEAR_RATIO_RID)
+  {
+    motor->gear_ratio = range.value;
+    motor->gear_ratio_received = 1U;
+  }
+  else if (data[3] == DM3519_PARAM_PMAX_RID)
   {
     motor->pmax_rad = range.value;
     motor->position_initialized = 0U;
@@ -434,6 +489,271 @@ static void X_Stop(void)
       HAL_Delay(X_STOP_REPEAT_INTERVAL_MS);
     }
   }
+}
+
+static void Z_SetVelocity(float velocity_rad_s)
+{
+  DM3519_SetVelocity(&hfdcan1, DM3519_Z_MOTOR_ID, velocity_rad_s);
+}
+
+static void Z_EnableVelocityMode(void)
+{
+  DM3519_EnableVelocityMode(&hfdcan1, DM3519_Z_MOTOR_ID);
+  Z_SetVelocity(0.0f);
+  HAL_Delay(5U);
+  Z_SetVelocity(0.0f);
+}
+
+static void Z_Stop(void)
+{
+  uint32_t repeat;
+
+  for (repeat = 0U; repeat < Z_STOP_REPEAT_COUNT; repeat++)
+  {
+    Z_SetVelocity(0.0f);
+    if ((repeat + 1U) < Z_STOP_REPEAT_COUNT)
+    {
+      HAL_Delay(Z_STOP_REPEAT_INTERVAL_MS);
+    }
+  }
+}
+
+static uint8_t Z_AcquireFreshFeedback(void)
+{
+  uint32_t start_tick;
+  uint32_t last_command_tick;
+  uint32_t initial_msg_count;
+
+  initial_msg_count = dm3519_z_motor.msg_count;
+  start_tick = HAL_GetTick();
+  last_command_tick = start_tick - Z_COMMAND_REFRESH_MS;
+
+  while ((HAL_GetTick() - start_tick) < Z_FEEDBACK_ACQUIRE_TIMEOUT_MS)
+  {
+    uint32_t now = HAL_GetTick();
+
+    if ((now - last_command_tick) >= Z_COMMAND_REFRESH_MS)
+    {
+      last_command_tick = now;
+      Z_SetVelocity(0.0f);
+    }
+
+    if ((dm3519_z_motor.msg_count != initial_msg_count) &&
+        (dm3519_z_motor.position_initialized != 0U) &&
+        ((now - dm3519_z_motor.last_feedback_tick) <=
+         Z_FEEDBACK_TIMEOUT_MS))
+    {
+      return 1U;
+    }
+
+    M2006_Axis_Update(now);
+    HAL_Delay(1U);
+  }
+
+  Z_Stop();
+  return 0U;
+}
+
+static uint8_t Z_EstablishPositionReference(void)
+{
+  uint32_t primask;
+
+  if (Z_AcquireFreshFeedback() == 0U)
+  {
+    return 0U;
+  }
+
+  primask = __get_PRIMASK();
+  __disable_irq();
+  z_position_zero_rad = dm3519_z_motor.position_unwrapped_rad;
+  z_position_reference_ready = 1U;
+  if (primask == 0U)
+  {
+    __enable_irq();
+  }
+
+  return 1U;
+}
+
+static uint8_t Z_GetPositionMm(float *position_mm)
+{
+  float wrapped_position_rad;
+  float unwrapped_position_rad;
+  float velocity_rad_s;
+  float torque_nm;
+  float gear_ratio;
+  float zero_rad;
+  uint32_t feedback_tick;
+  uint32_t message_count;
+  uint8_t error;
+  uint8_t position_initialized;
+  uint8_t reference_ready;
+  uint8_t gear_ratio_received;
+  uint32_t now;
+  uint32_t primask;
+
+  if (position_mm == 0)
+  {
+    return 0U;
+  }
+
+  now = HAL_GetTick();
+  primask = __get_PRIMASK();
+  __disable_irq();
+  wrapped_position_rad = dm3519_z_motor.position_rad;
+  unwrapped_position_rad = dm3519_z_motor.position_unwrapped_rad;
+  velocity_rad_s = dm3519_z_motor.velocity_rad_s;
+  torque_nm = dm3519_z_motor.torque_nm;
+  gear_ratio = dm3519_z_motor.gear_ratio;
+  zero_rad = z_position_zero_rad;
+  feedback_tick = dm3519_z_motor.last_feedback_tick;
+  message_count = dm3519_z_motor.msg_count;
+  error = dm3519_z_motor.error;
+  position_initialized = dm3519_z_motor.position_initialized;
+  reference_ready = z_position_reference_ready;
+  gear_ratio_received = dm3519_z_motor.gear_ratio_received;
+  if (primask == 0U)
+  {
+    __enable_irq();
+  }
+
+  z_feedback_error = error;
+  z_feedback_message_count = message_count;
+  z_feedback_position_rad = wrapped_position_rad;
+  z_feedback_unwrapped_rad = unwrapped_position_rad;
+  z_feedback_delta_rad = unwrapped_position_rad - zero_rad;
+  z_feedback_velocity_rad_s = velocity_rad_s;
+  z_feedback_torque_nm = torque_nm;
+  z_feedback_gear_ratio = gear_ratio;
+  z_feedback_gear_ratio_valid = gear_ratio_received;
+
+  if ((reference_ready == 0U) ||
+      (position_initialized == 0U) ||
+      ((now - feedback_tick) > Z_FEEDBACK_TIMEOUT_MS))
+  {
+    z_feedback_valid = 0U;
+    return 0U;
+  }
+
+  *position_mm = (z_feedback_delta_rad / gear_ratio) *
+                 Z_OUTPUT_MM_PER_RAD;
+  z_feedback_position_mm = *position_mm;
+  z_feedback_valid = 1U;
+  return 1U;
+}
+
+uint8_t Z_move(float target_position_mm, float speed_rad_s)
+{
+  float current_position_mm;
+  float distance_mm;
+  float direction_sign;
+  float mm_per_motor_rad;
+  float expected_time_ms;
+  uint32_t move_timeout_ms;
+  uint32_t start_tick;
+  uint32_t last_command_tick;
+
+  if ((target_position_mm != target_position_mm) ||
+      (speed_rad_s != speed_rad_s) ||
+      (target_position_mm < Z_POSITION_MIN_MM) ||
+      (target_position_mm > Z_POSITION_MAX_MM) ||
+      (speed_rad_s <= 0.0f) ||
+      (speed_rad_s > dm3519_z_motor.vmax_rad_s) ||
+      (z_position_reference_ready == 0U))
+  {
+    Z_Stop();
+    return 0U;
+  }
+
+  if ((Z_AcquireFreshFeedback() == 0U) ||
+      (Z_GetPositionMm(&current_position_mm) == 0U) ||
+      (z_feedback_gear_ratio <= 0.0f) ||
+      (current_position_mm < Z_POSITION_MIN_MM) ||
+      (current_position_mm > Z_POSITION_MAX_MM))
+  {
+    Z_Stop();
+    return 0U;
+  }
+
+  distance_mm = target_position_mm - current_position_mm;
+  if ((distance_mm <= Z_POSITION_TOLERANCE_MM) &&
+      (distance_mm >= -Z_POSITION_TOLERANCE_MM))
+  {
+    Z_Stop();
+    return 1U;
+  }
+
+  if (distance_mm > 0.0f)
+  {
+    direction_sign = 1.0f;
+  }
+  else
+  {
+    direction_sign = -1.0f;
+    distance_mm = -distance_mm;
+  }
+
+  mm_per_motor_rad = Z_OUTPUT_MM_PER_RAD / z_feedback_gear_ratio;
+  expected_time_ms = distance_mm * 1000.0f /
+                     (speed_rad_s * mm_per_motor_rad);
+  if (expected_time_ms > 4294966000.0f)
+  {
+    Z_Stop();
+    return 0U;
+  }
+  move_timeout_ms = (uint32_t)(expected_time_ms + 0.5f) +
+                    Z_MOVE_TIMEOUT_MARGIN_MS;
+
+  start_tick = HAL_GetTick();
+  last_command_tick = start_tick - Z_COMMAND_REFRESH_MS;
+  while ((HAL_GetTick() - start_tick) < move_timeout_ms)
+  {
+    uint32_t now = HAL_GetTick();
+
+    if ((Z_GetPositionMm(&current_position_mm) == 0U) ||
+        (current_position_mm < Z_POSITION_MIN_MM) ||
+        (current_position_mm > Z_POSITION_MAX_MM))
+    {
+      Z_Stop();
+      return 0U;
+    }
+
+    if (((direction_sign > 0.0f) &&
+         (current_position_mm >=
+          (target_position_mm - Z_POSITION_TOLERANCE_MM))) ||
+        ((direction_sign < 0.0f) &&
+         (current_position_mm <=
+          (target_position_mm + Z_POSITION_TOLERANCE_MM))))
+    {
+      Z_Stop();
+      return 1U;
+    }
+
+    if ((now - last_command_tick) >= Z_COMMAND_REFRESH_MS)
+    {
+      float remaining_mm = target_position_mm - current_position_mm;
+      float approach_speed_rad_s;
+
+      last_command_tick = now;
+      if (remaining_mm < 0.0f)
+      {
+        remaining_mm = -remaining_mm;
+      }
+      approach_speed_rad_s = remaining_mm /
+                             (mm_per_motor_rad * Z_APPROACH_TIME_S);
+      if (approach_speed_rad_s > speed_rad_s)
+      {
+        approach_speed_rad_s = speed_rad_s;
+      }
+      Z_SetVelocity(direction_sign * approach_speed_rad_s);
+    }
+
+    M2006_Axis_Update(now);
+    HAL_Delay(1U);
+  }
+
+  Z_Stop();
+  return 0U;
 }
 
 static float X_ClampVelocity(float velocity_rad_s,
@@ -626,6 +946,8 @@ static uint8_t X_GetSynchronizedPositions(uint32_t now,
                                           float *motor2_position_rad)
 {
   float position_error_rad;
+  float motor1_gear_ratio;
+  float motor2_gear_ratio;
   uint32_t motor1_feedback_tick;
   uint32_t motor2_feedback_tick;
   uint8_t motor1_initialized;
@@ -644,7 +966,9 @@ static uint8_t X_GetSynchronizedPositions(uint32_t now,
   *motor1_position_rad = dm3519_x_motor1.position_unwrapped_rad -
                          x_motor1_position_zero_rad;
   *motor2_position_rad = -(dm3519_x_motor2.position_unwrapped_rad -
-                           x_motor2_position_zero_rad);
+                            x_motor2_position_zero_rad);
+  motor1_gear_ratio = dm3519_x_motor1.gear_ratio;
+  motor2_gear_ratio = dm3519_x_motor2.gear_ratio;
   motor1_feedback_tick = dm3519_x_motor1.last_feedback_tick;
   motor2_feedback_tick = dm3519_x_motor2.last_feedback_tick;
   motor1_initialized = dm3519_x_motor1.position_initialized;
@@ -656,6 +980,8 @@ static uint8_t X_GetSynchronizedPositions(uint32_t now,
 
   if ((motor1_initialized == 0U) ||
       (motor2_initialized == 0U) ||
+      (motor1_gear_ratio <= 0.0f) ||
+      (motor2_gear_ratio <= 0.0f) ||
       ((now - motor1_feedback_tick) > X_SYNC_FEEDBACK_TIMEOUT_MS) ||
       ((now - motor2_feedback_tick) > X_SYNC_FEEDBACK_TIMEOUT_MS))
   {
@@ -663,6 +989,8 @@ static uint8_t X_GetSynchronizedPositions(uint32_t now,
     return 0U;
   }
 
+  *motor1_position_rad /= motor1_gear_ratio;
+  *motor2_position_rad /= motor2_gear_ratio;
   position_error_rad = *motor1_position_rad - *motor2_position_rad;
   if ((position_error_rad > X_SYNC_POSITION_FAULT_RAD) ||
       (position_error_rad < -X_SYNC_POSITION_FAULT_RAD))
@@ -763,6 +1091,34 @@ static uint8_t X_GetAxisPosition(uint32_t now, float *position_rad)
   return 1U;
 }
 
+static uint8_t X_HasReachedTrigger(uint32_t now,
+                                   float trigger_position_mm,
+                                   float direction_velocity_rad_s,
+                                   uint8_t *reached)
+{
+  float position_rad;
+  float position_mm;
+
+  if ((reached == 0) ||
+      (direction_velocity_rad_s == 0.0f) ||
+      (X_GetAxisPosition(now, &position_rad) == 0U))
+  {
+    return 0U;
+  }
+
+  position_mm = position_rad / X_FEEDBACK_RAD_PER_MM;
+  if (direction_velocity_rad_s > 0.0f)
+  {
+    *reached = (position_mm >= trigger_position_mm) ? 1U : 0U;
+  }
+  else
+  {
+    *reached = (position_mm <= trigger_position_mm) ? 1U : 0U;
+  }
+
+  return 1U;
+}
+
 static uint8_t X_PrepareTargetMotion(float target_position_mm,
                                      float speed_rad_s,
                                      uint32_t now,
@@ -822,6 +1178,7 @@ static uint8_t X_TargetMmToFeedbackRad(float target_position_mm,
 static void Motion_StopAll(void)
 {
   X_Stop();
+  Z_Stop();
   M2006_Axis_Stop();
 }
 
@@ -923,23 +1280,57 @@ static uint8_t Y_UpdateApproachTarget(float target_position_rev,
   return 1U;
 }
 
-static uint8_t XY_RunSelectedAxes(const MotionSegment_t *segment,
-                                  uint8_t run_x,
-                                  uint8_t run_y)
+static uint8_t Y_StartPreparedMotion(float target_position_rev,
+                                     uint32_t run_time_ms,
+                                     int16_t target_rpm,
+                                     uint8_t *running)
 {
-  uint32_t start_tick;
+  if (run_time_ms > 0U)
+  {
+    if (M2006_Axis_StartSpeed(target_rpm) == 0U)
+    {
+      return 0U;
+    }
+    *running = 1U;
+  }
+  else
+  {
+    if (M2006_Axis_StartPositionHold(target_position_rev) == 0U)
+    {
+      return 0U;
+    }
+    *running = 0U;
+  }
+
+  return 1U;
+}
+
+static uint8_t XY_RunGroup(const MotionGroup_t *group)
+{
+  const YMotionSegment_t *y_segment = 0;
+  uint32_t x_start_tick;
   uint32_t last_x_command_tick;
+  uint32_t y_start_tick = 0U;
   uint32_t x_run_time_ms = 0U;
   uint32_t y_run_time_ms = 0U;
   float x_velocity_rad_s = 0.0f;
   float y_target_position_rev = 0.0f;
   int16_t y_target_rpm = 0;
   uint8_t x_running;
-  uint8_t y_running;
+  uint8_t y_running = 0U;
+  uint8_t y_segment_active;
+  uint8_t y_segment_index = 0U;
+  uint8_t y_waiting_for_x_position = 0U;
 
-  if ((run_x != 0U) &&
-      (X_PrepareTargetMotion(segment->x_target_position_mm,
-                             segment->x_speed_rad_s,
+  if (RoutePlan_ValidateGroup(group) == 0U)
+  {
+    Motion_StopAll();
+    return 0U;
+  }
+
+  if ((group->x_enabled != 0U) &&
+      (X_PrepareTargetMotion(group->x_target_position_mm,
+                             group->x_speed_rad_s,
                              HAL_GetTick(),
                              &x_run_time_ms,
                              &x_velocity_rad_s) == 0U))
@@ -948,9 +1339,15 @@ static uint8_t XY_RunSelectedAxes(const MotionSegment_t *segment,
     return 0U;
   }
 
-  if ((run_y != 0U) &&
-      (Y_PrepareTargetMotion(segment->y_target_position_mm,
-                             segment->y_speed_rpm,
+  if (group->y_segment_count > 0U)
+  {
+    y_segment = &group->y_segments[0];
+    y_waiting_for_x_position = y_segment->wait_for_x_position;
+  }
+  if ((y_segment != 0) &&
+      (y_waiting_for_x_position == 0U) &&
+      (Y_PrepareTargetMotion(y_segment->y_target_position_mm,
+                             y_segment->y_speed_rpm,
                              &y_target_position_rev,
                              &y_run_time_ms,
                              &y_target_rpm) == 0U))
@@ -959,44 +1356,45 @@ static uint8_t XY_RunSelectedAxes(const MotionSegment_t *segment,
     return 0U;
   }
 
-  x_running = ((run_x != 0U) && (x_run_time_ms > 0U)) ? 1U : 0U;
-  y_running = ((run_y != 0U) && (y_run_time_ms > 0U)) ? 1U : 0U;
-  start_tick = HAL_GetTick();
-  last_x_command_tick = start_tick;
+  x_running = ((group->x_enabled != 0U) &&
+               (x_run_time_ms > 0U)) ? 1U : 0U;
+  y_segment_active = (y_segment != 0) ? 1U : 0U;
+  x_start_tick = HAL_GetTick();
+  last_x_command_tick = x_start_tick;
+  y_start_tick = x_start_tick;
 
   if (x_running != 0U)
   {
     X_SetSynchronizedVelocity(
       X_GetTrapezoidVelocity(x_velocity_rad_s, 0U, x_run_time_ms),
-      start_tick);
+      x_start_tick);
     if (x_sync_fault != X_SYNC_FAULT_NONE)
     {
       Motion_StopAll();
       return 0U;
     }
   }
-  if ((y_running != 0U) &&
-      (M2006_Axis_StartSpeed(y_target_rpm) == 0U))
-  {
-    Motion_StopAll();
-    return 0U;
-  }
-  if ((run_y != 0U) &&
-      (y_running == 0U) &&
-      (M2006_Axis_StartPositionHold(y_target_position_rev) == 0U))
+  if ((y_segment_active != 0U) &&
+      (y_waiting_for_x_position == 0U) &&
+      (Y_StartPreparedMotion(y_target_position_rev,
+                             y_run_time_ms,
+                             y_target_rpm,
+                             &y_running) == 0U))
   {
     Motion_StopAll();
     return 0U;
   }
 
   while ((x_running != 0U) ||
-         (y_running != 0U))
+         (y_segment_active != 0U))
   {
     uint32_t now = HAL_GetTick();
-    uint32_t elapsed_ms = now - start_tick;
+    uint32_t x_elapsed_ms = now - x_start_tick;
 
-    if (((run_x != 0U) && (x_sync_fault != X_SYNC_FAULT_NONE)) ||
-        ((run_y != 0U) && (M2006_Axis_HasFault() != 0U)))
+    if (((group->x_enabled != 0U) &&
+         (x_sync_fault != X_SYNC_FAULT_NONE)) ||
+        ((group->y_segment_count > 0U) &&
+         (M2006_Axis_HasFault() != 0U)))
     {
       Motion_StopAll();
       return 0U;
@@ -1004,7 +1402,7 @@ static uint8_t XY_RunSelectedAxes(const MotionSegment_t *segment,
 
     if (x_running != 0U)
     {
-      if (elapsed_ms >= x_run_time_ms)
+      if (x_elapsed_ms >= x_run_time_ms)
       {
         X_Stop();
         x_running = 0U;
@@ -1014,38 +1412,111 @@ static uint8_t XY_RunSelectedAxes(const MotionSegment_t *segment,
         last_x_command_tick = now;
         X_SetSynchronizedVelocity(
           X_GetTrapezoidVelocity(x_velocity_rad_s,
-                                 elapsed_ms,
+                                 x_elapsed_ms,
                                  x_run_time_ms),
           now);
       }
     }
 
-    if (y_running != 0U)
+    if (y_segment_active != 0U)
     {
       uint8_t ready_to_hold;
 
-      if (Y_UpdateApproachTarget(y_target_position_rev,
-                                 segment->y_speed_rpm,
-                                 &ready_to_hold) == 0U)
+      if (y_waiting_for_x_position != 0U)
       {
-        Motion_StopAll();
-        return 0U;
-      }
-      if (ready_to_hold != 0U)
-      {
-        if (M2006_Axis_StartPositionHold(y_target_position_rev) == 0U)
+        uint8_t trigger_reached;
+
+        if (X_HasReachedTrigger(now,
+                                y_segment->x_trigger_position_mm,
+                                x_velocity_rad_s,
+                                &trigger_reached) == 0U)
         {
           Motion_StopAll();
           return 0U;
         }
-        y_running = 0U;
+        if (trigger_reached != 0U)
+        {
+          if ((Y_PrepareTargetMotion(y_segment->y_target_position_mm,
+                                     y_segment->y_speed_rpm,
+                                     &y_target_position_rev,
+                                     &y_run_time_ms,
+                                     &y_target_rpm) == 0U) ||
+              (Y_StartPreparedMotion(y_target_position_rev,
+                                     y_run_time_ms,
+                                     y_target_rpm,
+                                     &y_running) == 0U))
+          {
+            Motion_StopAll();
+            return 0U;
+          }
+          y_start_tick = now;
+          y_waiting_for_x_position = 0U;
+        }
+        else if (x_running == 0U)
+        {
+          Motion_StopAll();
+          return 0U;
+        }
       }
-      else if ((elapsed_ms >= y_run_time_ms) &&
-               ((elapsed_ms - y_run_time_ms) >=
-                Y_TARGET_SETTLE_TIMEOUT_MS))
+
+      if (y_waiting_for_x_position == 0U)
       {
-        Motion_StopAll();
-        return 0U;
+        ready_to_hold = (y_running == 0U) ? 1U : 0U;
+        if ((y_running != 0U) &&
+            (Y_UpdateApproachTarget(y_target_position_rev,
+                                    y_segment->y_speed_rpm,
+                                    &ready_to_hold) == 0U))
+        {
+          Motion_StopAll();
+          return 0U;
+        }
+        if (ready_to_hold != 0U)
+        {
+          if ((y_running != 0U) &&
+              (M2006_Axis_StartPositionHold(y_target_position_rev) == 0U))
+          {
+            Motion_StopAll();
+            return 0U;
+          }
+
+          y_segment_index++;
+          if (y_segment_index >= group->y_segment_count)
+          {
+            y_segment_active = 0U;
+            y_running = 0U;
+          }
+          else
+          {
+            y_segment = &group->y_segments[y_segment_index];
+            y_waiting_for_x_position = y_segment->wait_for_x_position;
+            y_running = 0U;
+            if ((y_waiting_for_x_position == 0U) &&
+                ((Y_PrepareTargetMotion(y_segment->y_target_position_mm,
+                                        y_segment->y_speed_rpm,
+                                        &y_target_position_rev,
+                                        &y_run_time_ms,
+                                        &y_target_rpm) == 0U) ||
+                 (Y_StartPreparedMotion(y_target_position_rev,
+                                        y_run_time_ms,
+                                        y_target_rpm,
+                                        &y_running) == 0U)))
+            {
+              Motion_StopAll();
+              return 0U;
+            }
+            if (y_waiting_for_x_position == 0U)
+            {
+              y_start_tick = now;
+            }
+          }
+        }
+        else if (((now - y_start_tick) >= y_run_time_ms) &&
+                 (((now - y_start_tick) - y_run_time_ms) >=
+                  Y_TARGET_SETTLE_TIMEOUT_MS))
+        {
+          Motion_StopAll();
+          return 0U;
+        }
       }
     }
 
@@ -1062,40 +1533,10 @@ static uint8_t XY_RunSelectedAxes(const MotionSegment_t *segment,
   return 1U;
 }
 
-static uint8_t XY_RunSegment(const MotionSegment_t *segment)
-{
-  if (RoutePlan_ValidateSegment(segment) == 0U)
-  {
-    Motion_StopAll();
-    return 0U;
-  }
-
-  if ((segment->x_enabled != 0U) &&
-      (segment->y_enabled != 0U) &&
-      (segment->synchronized != 0U))
-  {
-    return XY_RunSelectedAxes(segment, 1U, 1U);
-  }
-
-  /* Revision: a non-synchronized segment controls one axis, never X then Y. */
-  if ((segment->x_enabled != 0U) &&
-      (XY_RunSelectedAxes(segment, 1U, 0U) == 0U))
-  {
-    return 0U;
-  }
-  else if ((segment->y_enabled != 0U) &&
-           (XY_RunSelectedAxes(segment, 0U, 1U) == 0U))
-  {
-    return 0U;
-  }
-
-  return 1U;
-}
-
 uint8_t Route_Run(uint8_t from_position, uint8_t to_position)
 {
   const RoutePlan_t *route = RoutePlan_Find(from_position, to_position);
-  uint8_t segment_index;
+  uint8_t group_index;
 
   if ((route == 0) || (route->configured == 0U))
   {
@@ -1105,11 +1546,11 @@ uint8_t Route_Run(uint8_t from_position, uint8_t to_position)
 
   Motion_StopAll();
 
-  for (segment_index = 0U;
-       segment_index < route->segment_count;
-       segment_index++)
+  for (group_index = 0U;
+       group_index < route->group_count;
+       group_index++)
   {
-    if (XY_RunSegment(&route->segments[segment_index]) == 0U)
+    if (XY_RunGroup(&route->groups[group_index]) == 0U)
     {
       Motion_StopAll();
       return 0U;
@@ -1172,10 +1613,17 @@ int main(void)
   Motion_StopAll();
   HAL_Delay(100U);
   X_EnablePairedVelocityMode();
+  Z_EnableVelocityMode();
   DM3519_RequestMappingRanges(DM3519_X_MOTOR1_ID);
   DM3519_RequestMappingRanges(DM3519_X_MOTOR2_ID);
+  DM3519_RequestMappingRanges(DM3519_Z_MOTOR_ID);
   X_SetPairedVelocity(0.0f);
+  Z_SetVelocity(0.0f);
   HAL_Delay(20U);
+  if (Z_EstablishPositionReference() == 0U)
+  {
+    Error_Handler();
+  }
 
   /* USER CODE END 2 */
 
@@ -1187,8 +1635,10 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
     float position_rev;
+    float z_position_mm;
 
     M2006_Axis_Update(HAL_GetTick());
+    (void)Z_GetPositionMm(&z_position_mm);
     if (M2006_Axis_GetPositionRev(&position_rev) != 0U)
     {
       y_calibration_position_rev = position_rev;
@@ -1206,8 +1656,7 @@ int main(void)
       if (HAL_GPIO_ReadPin(START_KEY_GPIO_Port, START_KEY_Pin) ==
           START_KEY_PRESSED_STATE)
       {
-        route_1_to_4_result =
-          (Route_Run(1U, 4U) != 0U) ? 1U : 2U;
+        xy_test_result = (Route_Run(0U, 0U) != 0U) ? 1U : 2U;
 
         while (HAL_GPIO_ReadPin(START_KEY_GPIO_Port, START_KEY_Pin) ==
                START_KEY_PRESSED_STATE)
@@ -1325,6 +1774,12 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
       {
         DM3519_DecodeFeedback(&dm3519_x_motor2,
                               DM3519_X_MOTOR2_ID,
+                              rx_data);
+      }
+      else if (rx_header.Identifier == DM3519_Z_MOTOR_MASTER_ID)
+      {
+        DM3519_DecodeFeedback(&dm3519_z_motor,
+                              DM3519_Z_MOTOR_ID,
                               rx_data);
       }
     }
