@@ -55,6 +55,18 @@ void Error_Handler(void);
 /* USER CODE BEGIN EFP */
 
 uint8_t Z_move(float target_position_mm, float speed_rad_s);
+uint8_t Z_START(void);
+uint8_t GRIP_01_YELLOW(void);
+uint8_t GRIP_01_GREEN(void);
+uint8_t GRIP_01_WHITE(void);
+uint8_t GRIP_02_YELLOW(void);
+uint8_t GRIP_02_GREEN(void);
+uint8_t GRIP_02_WHITE(void);
+uint8_t GRIP_03_YELLOW(void);
+uint8_t GRIP_03_GREEN(void);
+uint8_t GRIP_03_WHITE(void);
+uint8_t RELEASE_04_08(void);
+uint8_t RELEASE_05_06_07(void);
 extern volatile uint8_t z_feedback_valid;
 extern volatile uint8_t z_feedback_error;
 extern volatile uint8_t z_feedback_gear_ratio_valid;

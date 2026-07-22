@@ -81,6 +81,15 @@ static int16_t M2006_ClampTargetRpm(int16_t target_rpm)
   return target_rpm;
 }
 
+static uint8_t M2006_FeedbackTimedOut(uint32_t now_ms,
+                                      uint32_t feedback_tick_ms)
+{
+  /* The feedback ISR may advance its tick after the caller sampled now_ms. */
+  int32_t feedback_age_ms = (int32_t)(now_ms - feedback_tick_ms);
+
+  return (feedback_age_ms > (int32_t)M2006_FEEDBACK_TIMEOUT_MS) ? 1U : 0U;
+}
+
 static HAL_StatusTypeDef M2006_SendCurrent(int16_t current)
 {
   FDCAN_TxHeaderTypeDef tx_header = {0};
@@ -280,8 +289,8 @@ uint8_t M2006_Axis_StartSpeed(int16_t target_rpm)
     M2006_SetFault(M2006_AXIS_FAULT_NO_FEEDBACK);
     return 0U;
   }
-  if ((now_ms - m2006_axis.feedback_tick_ms) >
-      M2006_FEEDBACK_TIMEOUT_MS)
+  if (M2006_FeedbackTimedOut(now_ms,
+                            m2006_axis.feedback_tick_ms) != 0U)
   {
     M2006_SetFault(M2006_AXIS_FAULT_FEEDBACK_TIMEOUT);
     return 0U;
@@ -321,8 +330,8 @@ uint8_t M2006_Axis_StartPositionHold(float target_position_rev)
     M2006_SetFault(M2006_AXIS_FAULT_NO_FEEDBACK);
     return 0U;
   }
-  if (((now_ms - m2006_axis.feedback_tick_ms) >
-       M2006_FEEDBACK_TIMEOUT_MS) ||
+  if ((M2006_FeedbackTimedOut(now_ms,
+                             m2006_axis.feedback_tick_ms) != 0U) ||
       (M2006_Axis_GetPositionRev(&current_position_rev) == 0U))
   {
     M2006_SetFault(M2006_AXIS_FAULT_FEEDBACK_TIMEOUT);
@@ -353,8 +362,8 @@ void M2006_Axis_Update(uint32_t now_ms)
   {
     return;
   }
-  if ((now_ms - m2006_axis.feedback_tick_ms) >
-      M2006_FEEDBACK_TIMEOUT_MS)
+  if (M2006_FeedbackTimedOut(now_ms,
+                            m2006_axis.feedback_tick_ms) != 0U)
   {
     M2006_SetFault(M2006_AXIS_FAULT_FEEDBACK_TIMEOUT);
     return;
@@ -462,7 +471,7 @@ uint8_t M2006_Axis_GetPositionRev(float *position_rev)
   feedback_tick_ms = m2006_axis.feedback_tick_ms;
   position_initialized = m2006_axis.position_initialized;
   if ((position_initialized != 0U) &&
-      ((now_ms - feedback_tick_ms) <= M2006_FEEDBACK_TIMEOUT_MS) &&
+      (M2006_FeedbackTimedOut(now_ms, feedback_tick_ms) == 0U) &&
       (m2006_axis.position_reference_ready == 0U))
   {
     m2006_axis.position_zero_ecd = total_ecd;
@@ -475,7 +484,7 @@ uint8_t M2006_Axis_GetPositionRev(float *position_rev)
   }
 
   if ((position_initialized == 0U) ||
-      ((now_ms - feedback_tick_ms) > M2006_FEEDBACK_TIMEOUT_MS))
+      (M2006_FeedbackTimedOut(now_ms, feedback_tick_ms) != 0U))
   {
     return 0U;
   }

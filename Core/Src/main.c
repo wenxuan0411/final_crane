@@ -107,7 +107,7 @@ typedef enum
 #define Z_POSITION_TOLERANCE_MM             0.5f
 #define Z_APPROACH_TIME_S                   0.10f
 #define Z_TEST_TARGET_POSITION_MM           285.0f
-#define Z_TEST_SPEED_RAD_S                  5.0f
+#define Z_TEST_SPEED_RAD_S                  7.0f
 #define Z_COMMAND_REFRESH_MS                20U
 #define Z_FEEDBACK_TIMEOUT_MS               100U
 #define Z_FEEDBACK_ACQUIRE_TIMEOUT_MS       300U
@@ -119,6 +119,12 @@ typedef enum
 #define Y_HOLD_ENTRY_TOLERANCE_MM           2.0f
 #define START_KEY_PRESSED_STATE             GPIO_PIN_RESET
 #define START_KEY_DEBOUNCE_MS               30U
+#define ROUTE_SEQUENCE_WAIT_MS              2000U
+#define SERVO_MIN_PULSE_US                   500U
+#define SERVO_MAX_PULSE_US                   2500U
+#define SERVO_MAX_ANGLE_DEG                  180.0f
+#define GRIP_ACTION_INTERVAL_MS              1500U
+#define Z_START_TO_GRIP_DELAY_MS             5000U
 
 /* USER CODE END PD */
 
@@ -154,10 +160,13 @@ static volatile float x_motor1_position_zero_rad = 0.0f;
 static volatile float x_motor2_position_zero_rad = 0.0f;
 static volatile X_SyncFault_t x_sync_fault = X_SYNC_FAULT_NONE;
 static uint8_t x_position_reference_ready = 0U;
+static uint8_t gripper_servo_pwm_started = 0U;
+static uint8_t rotation_servo_pwm_started = 0U;
 volatile float y_calibration_position_rev = 0.0f;
 volatile uint8_t y_calibration_position_valid = 0U;
 volatile uint8_t z_jog_result = 0U;
 volatile uint8_t xy_test_result = 0U;
+volatile uint8_t route_0_to_1_result = 0xFFU;
 volatile uint8_t z_feedback_valid = 0U;
 volatile uint8_t z_feedback_error = 0U;
 volatile uint8_t z_feedback_gear_ratio_valid = 0U;
@@ -182,6 +191,70 @@ static uint8_t X_TargetMmToFeedbackRad(float target_position_mm,
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+static void GripperServo_SetAngle(float angle_deg)
+{
+  uint32_t pulse_us;
+
+  if (angle_deg < 0.0f)
+  {
+    angle_deg = 0.0f;
+  }
+  else if (angle_deg > SERVO_MAX_ANGLE_DEG)
+  {
+    angle_deg = SERVO_MAX_ANGLE_DEG;
+  }
+
+  pulse_us = SERVO_MIN_PULSE_US +
+             (uint32_t)((angle_deg *
+                         (float)(SERVO_MAX_PULSE_US - SERVO_MIN_PULSE_US) /
+                         SERVO_MAX_ANGLE_DEG) + 0.5f);
+  __HAL_TIM_SET_COMPARE(&GRIPPER_SERVO_TIM,
+                        GRIPPER_SERVO_CHANNEL,
+                        pulse_us);
+
+  if (gripper_servo_pwm_started == 0U)
+  {
+    if (HAL_TIM_PWM_Start(&GRIPPER_SERVO_TIM,
+                          GRIPPER_SERVO_CHANNEL) != HAL_OK)
+    {
+      Error_Handler();
+    }
+    gripper_servo_pwm_started = 1U;
+  }
+}
+
+static void RotationServo_SetAngle(float angle_deg)
+{
+  uint32_t pulse_us;
+
+  if (angle_deg < 0.0f)
+  {
+    angle_deg = 0.0f;
+  }
+  else if (angle_deg > SERVO_MAX_ANGLE_DEG)
+  {
+    angle_deg = SERVO_MAX_ANGLE_DEG;
+  }
+
+  pulse_us = SERVO_MIN_PULSE_US +
+             (uint32_t)((angle_deg *
+                         (float)(SERVO_MAX_PULSE_US - SERVO_MIN_PULSE_US) /
+                         SERVO_MAX_ANGLE_DEG) + 0.5f);
+  __HAL_TIM_SET_COMPARE(&ROTATION_SERVO_TIM,
+                        ROTATION_SERVO_CHANNEL,
+                        pulse_us);
+
+  if (rotation_servo_pwm_started == 0U)
+  {
+    if (HAL_TIM_PWM_Start(&ROTATION_SERVO_TIM,
+                          ROTATION_SERVO_CHANNEL) != HAL_OK)
+    {
+      Error_Handler();
+    }
+    rotation_servo_pwm_started = 1U;
+  }
+}
+
 static uint32_t FDCAN_DLC_FromLength(uint8_t len)
 {
   if (len == 4U)
@@ -754,6 +827,183 @@ uint8_t Z_move(float target_position_mm, float speed_rad_s)
 
   Z_Stop();
   return 0U;
+}
+
+uint8_t Z_START(void)
+{
+  RotationServo_SetAngle(ROTATION_SERVO_END_ANGLE);
+  GripperServo_SetAngle(GRIPPER_SERVO_GRIP_ANGLE);
+
+  if (Z_move(235.0f, Z_TEST_SPEED_RAD_S) == 0U)
+  {
+    return 0U;
+  }
+
+  RotationServo_SetAngle(ROTATION_SERVO_START_ANGLE);
+  GripperServo_SetAngle(GRIPPER_SERVO_OPEN_ANGLE);
+  return 1U;
+}
+
+uint8_t GRIP_01_YELLOW(void)
+{
+  if (Z_move(100.0f, Z_TEST_SPEED_RAD_S) == 0U)
+  {
+    return 0U;
+  }
+  HAL_Delay(GRIP_ACTION_INTERVAL_MS);
+
+  GripperServo_SetAngle(GRIPPER_SERVO_GRIP_ANGLE);
+  HAL_Delay(GRIP_ACTION_INTERVAL_MS);
+
+  return Z_move(285.0f, Z_TEST_SPEED_RAD_S);
+}
+
+uint8_t GRIP_01_GREEN(void)
+{
+  if (Z_move(105.0f, Z_TEST_SPEED_RAD_S) == 0U)
+  {
+    return 0U;
+  }
+  HAL_Delay(GRIP_ACTION_INTERVAL_MS);
+
+  GripperServo_SetAngle(GRIPPER_SERVO_GRIP_ANGLE);
+  HAL_Delay(GRIP_ACTION_INTERVAL_MS);
+
+  return Z_move(285.0f, Z_TEST_SPEED_RAD_S);
+}
+
+uint8_t GRIP_01_WHITE(void)
+{
+  if (Z_move(100.0f, Z_TEST_SPEED_RAD_S) == 0U)
+  {
+    return 0U;
+  }
+  HAL_Delay(GRIP_ACTION_INTERVAL_MS);
+
+  GripperServo_SetAngle(GRIPPER_SERVO_GRIP_ANGLE);
+  HAL_Delay(GRIP_ACTION_INTERVAL_MS);
+
+  return Z_move(285.0f, Z_TEST_SPEED_RAD_S);
+}
+
+uint8_t GRIP_02_YELLOW(void)
+{
+  if (Z_move(150.0f, Z_TEST_SPEED_RAD_S) == 0U)
+  {
+    return 0U;
+  }
+  HAL_Delay(GRIP_ACTION_INTERVAL_MS);
+
+  GripperServo_SetAngle(GRIPPER_SERVO_GRIP_ANGLE);
+  HAL_Delay(GRIP_ACTION_INTERVAL_MS);
+
+  return Z_move(285.0f, Z_TEST_SPEED_RAD_S);
+}
+
+uint8_t GRIP_02_GREEN(void)
+{
+  if (Z_move(155.0f, Z_TEST_SPEED_RAD_S) == 0U)
+  {
+    return 0U;
+  }
+  HAL_Delay(GRIP_ACTION_INTERVAL_MS);
+
+  GripperServo_SetAngle(GRIPPER_SERVO_GRIP_ANGLE);
+  HAL_Delay(GRIP_ACTION_INTERVAL_MS);
+
+  return Z_move(285.0f, Z_TEST_SPEED_RAD_S);
+}
+
+uint8_t GRIP_02_WHITE(void)
+{
+  if (Z_move(150.0f, Z_TEST_SPEED_RAD_S) == 0U)
+  {
+    return 0U;
+  }
+  HAL_Delay(GRIP_ACTION_INTERVAL_MS);
+
+  GripperServo_SetAngle(GRIPPER_SERVO_GRIP_ANGLE);
+  HAL_Delay(GRIP_ACTION_INTERVAL_MS);
+
+  return Z_move(285.0f, Z_TEST_SPEED_RAD_S);
+}
+
+uint8_t GRIP_03_YELLOW(void)
+{
+  if (Z_move(200.0f, Z_TEST_SPEED_RAD_S) == 0U)
+  {
+    return 0U;
+  }
+  HAL_Delay(GRIP_ACTION_INTERVAL_MS);
+
+  GripperServo_SetAngle(GRIPPER_SERVO_GRIP_ANGLE);
+  HAL_Delay(GRIP_ACTION_INTERVAL_MS);
+
+  return Z_move(285.0f, Z_TEST_SPEED_RAD_S);
+}
+
+uint8_t GRIP_03_GREEN(void)
+{
+  if (Z_move(205.0f, Z_TEST_SPEED_RAD_S) == 0U)
+  {
+    return 0U;
+  }
+  HAL_Delay(GRIP_ACTION_INTERVAL_MS);
+
+  GripperServo_SetAngle(GRIPPER_SERVO_GRIP_ANGLE);
+  HAL_Delay(GRIP_ACTION_INTERVAL_MS);
+
+  return Z_move(285.0f, Z_TEST_SPEED_RAD_S);
+}
+
+uint8_t GRIP_03_WHITE(void)
+{
+  if (Z_move(200.0f, Z_TEST_SPEED_RAD_S) == 0U)
+  {
+    return 0U;
+  }
+  HAL_Delay(GRIP_ACTION_INTERVAL_MS);
+
+  GripperServo_SetAngle(GRIPPER_SERVO_GRIP_ANGLE);
+  HAL_Delay(GRIP_ACTION_INTERVAL_MS);
+
+  return Z_move(285.0f, Z_TEST_SPEED_RAD_S);
+}
+
+uint8_t RELEASE_04_08(void)
+{
+  RotationServo_SetAngle(ROTATION_SERVO_END_ANGLE);
+	HAL_Delay(GRIP_ACTION_INTERVAL_MS);
+  if (Z_move(135.0f, Z_TEST_SPEED_RAD_S) == 0U)
+  {
+    return 0U;
+  }
+  HAL_Delay(GRIP_ACTION_INTERVAL_MS);
+
+  GripperServo_SetAngle(GRIPPER_SERVO_OPEN_ANGLE);
+  HAL_Delay(GRIP_ACTION_INTERVAL_MS);
+
+  if (Z_move(285.0f, Z_TEST_SPEED_RAD_S) == 0U)
+  {
+    return 0U;
+  }
+
+  RotationServo_SetAngle(ROTATION_SERVO_START_ANGLE);
+  return 1U;
+}
+
+uint8_t RELEASE_05_06_07(void)
+{
+  if (Z_move(135.0f, Z_TEST_SPEED_RAD_S) == 0U)
+  {
+    return 0U;
+  }
+  HAL_Delay(GRIP_ACTION_INTERVAL_MS);
+
+  GripperServo_SetAngle(GRIPPER_SERVO_OPEN_ANGLE);
+  HAL_Delay(GRIP_ACTION_INTERVAL_MS);
+
+  return Z_move(285.0f, Z_TEST_SPEED_RAD_S);
 }
 
 static float X_ClampVelocity(float velocity_rad_s,
@@ -1520,7 +1770,7 @@ static uint8_t XY_RunGroup(const MotionGroup_t *group)
       }
     }
 
-    M2006_Axis_Update(now);
+    M2006_Axis_Update(HAL_GetTick());
     if (M2006_Axis_HasFault() != 0U)
     {
       Motion_StopAll();
@@ -1656,7 +1906,34 @@ int main(void)
       if (HAL_GPIO_ReadPin(START_KEY_GPIO_Port, START_KEY_Pin) ==
           START_KEY_PRESSED_STATE)
       {
-        xy_test_result = (Route_Run(0U, 0U) != 0U) ? 1U : 2U;
+        route_0_to_1_result = Route_Run(0U, 1U);
+
+        if (route_0_to_1_result != 0U)
+        {
+          uint32_t wait_start_tick = HAL_GetTick();
+
+          while (((HAL_GetTick() - wait_start_tick) <
+                  ROUTE_SEQUENCE_WAIT_MS) &&
+                 (M2006_Axis_HasFault() == 0U))
+          {
+            M2006_Axis_Update(HAL_GetTick());
+            HAL_Delay(1U);
+          }
+
+          if ((M2006_Axis_HasFault() == 0U) &&
+              (Route_Run(0U, 2U) != 0U))
+          {
+            xy_test_result = 1U;
+          }
+          else
+          {
+            xy_test_result = 2U;
+          }
+        }
+        else
+        {
+          xy_test_result = 2U;
+        }
 
         while (HAL_GPIO_ReadPin(START_KEY_GPIO_Port, START_KEY_Pin) ==
                START_KEY_PRESSED_STATE)

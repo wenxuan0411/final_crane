@@ -36,6 +36,20 @@ extern TIM_HandleTypeDef htim2;
 
 /* USER CODE BEGIN Private defines */
 
+#define GRIPPER_SERVO_TIM             htim2
+#define GRIPPER_SERVO_CHANNEL         TIM_CHANNEL_1
+#define GRIPPER_SERVO_GPIO_PORT       GPIOA
+#define GRIPPER_SERVO_GPIO_PIN        GPIO_PIN_0
+#define GRIPPER_SERVO_OPEN_ANGLE      68.0f
+#define GRIPPER_SERVO_GRIP_ANGLE      110.0f
+
+#define ROTATION_SERVO_TIM            htim2
+#define ROTATION_SERVO_CHANNEL        TIM_CHANNEL_3
+#define ROTATION_SERVO_GPIO_PORT      GPIOA
+#define ROTATION_SERVO_GPIO_PIN       GPIO_PIN_2
+#define ROTATION_SERVO_START_ANGLE    50.0f
+#define ROTATION_SERVO_END_ANGLE      135.0f
+
 /* USER CODE END Private defines */
 
 void MX_TIM2_Init(void);

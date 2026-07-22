@@ -29,6 +29,24 @@
  * Keep configured = 0U in route_table until all segments of that route
  * have been measured and filled in.
  */
+static const YMotionSegment_t route_0_to_1_y[] =
+{
+  Y_SEGMENT(500.0f, 3600U),
+};
+
+static const MotionGroup_t route_0_to_1[] =
+{
+  XY_GROUP(1000.0f, 5.0f, route_0_to_1_y),
+};
+static const YMotionSegment_t route_0_to_2_y[] =
+{
+  Y_SEGMENT(0.0f, 3600U),
+};
+
+static const MotionGroup_t route_0_to_2[] =
+{
+  XY_GROUP(0.0f, 5.0f, route_0_to_2_y),
+};
 
 static const YMotionSegment_t route_1_to_4_y[] =
 {
@@ -210,6 +228,8 @@ static const MotionGroup_t route_8_to_3[] =
 
 static const RoutePlan_t route_table[] =
 {
+	{0U, 1U, route_0_to_1, (uint8_t)ARRAY_SIZE(route_0_to_1), 1U},
+  {0U, 2U, route_0_to_2, (uint8_t)ARRAY_SIZE(route_0_to_2), 1U},
   {0U, 0U, xy_motion_test, (uint8_t)ARRAY_SIZE(xy_motion_test), 1U},
   {1U, 4U, route_1_to_4, (uint8_t)ARRAY_SIZE(route_1_to_4), 1U},
   {1U, 5U, route_1_to_5, (uint8_t)ARRAY_SIZE(route_1_to_5), 1U},
