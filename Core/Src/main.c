@@ -119,12 +119,11 @@ typedef enum
 #define Y_HOLD_ENTRY_TOLERANCE_MM           2.0f
 #define START_KEY_PRESSED_STATE             GPIO_PIN_RESET
 #define START_KEY_DEBOUNCE_MS               30U
-#define ROUTE_SEQUENCE_WAIT_MS              2000U
+#define ROUTE_NEXT_LEG_WAIT_MS              2000U
 #define SERVO_MIN_PULSE_US                   500U
 #define SERVO_MAX_PULSE_US                   2500U
 #define SERVO_MAX_ANGLE_DEG                  180.0f
 #define GRIP_ACTION_INTERVAL_MS              1500U
-#define Z_START_TO_GRIP_DELAY_MS             5000U
 
 /* USER CODE END PD */
 
@@ -164,7 +163,6 @@ static uint8_t gripper_servo_pwm_started = 0U;
 static uint8_t rotation_servo_pwm_started = 0U;
 volatile float y_calibration_position_rev = 0.0f;
 volatile uint8_t y_calibration_position_valid = 0U;
-volatile uint8_t z_jog_result = 0U;
 volatile uint8_t xy_test_result = 0U;
 volatile uint8_t route_0_to_1_result = 0xFFU;
 volatile uint8_t z_feedback_valid = 0U;
@@ -831,8 +829,6 @@ uint8_t Z_move(float target_position_mm, float speed_rad_s)
 
 uint8_t Z_START(void)
 {
-  RotationServo_SetAngle(ROTATION_SERVO_END_ANGLE);
-  GripperServo_SetAngle(GRIPPER_SERVO_GRIP_ANGLE);
 
   if (Z_move(235.0f, Z_TEST_SPEED_RAD_S) == 0U)
   {
@@ -1855,6 +1851,8 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART10_UART_Init();
   /* USER CODE BEGIN 2 */
+  RotationServo_SetAngle(ROTATION_SERVO_END_ANGLE);
+  GripperServo_SetAngle(GRIPPER_SERVO_GRIP_ANGLE);
   DM3519_CAN1_Start();
   if (M2006_Axis_Init(&hfdcan2) != HAL_OK)
   {
@@ -1913,7 +1911,7 @@ int main(void)
           uint32_t wait_start_tick = HAL_GetTick();
 
           while (((HAL_GetTick() - wait_start_tick) <
-                  ROUTE_SEQUENCE_WAIT_MS) &&
+                  ROUTE_NEXT_LEG_WAIT_MS) &&
                  (M2006_Axis_HasFault() == 0U))
           {
             M2006_Axis_Update(HAL_GetTick());
@@ -1921,9 +1919,27 @@ int main(void)
           }
 
           if ((M2006_Axis_HasFault() == 0U) &&
-              (Route_Run(0U, 2U) != 0U))
+              (Route_Run(1U, 8U) != 0U))
           {
-            xy_test_result = 1U;
+            wait_start_tick = HAL_GetTick();
+
+            while (((HAL_GetTick() - wait_start_tick) <
+                    ROUTE_NEXT_LEG_WAIT_MS) &&
+                   (M2006_Axis_HasFault() == 0U))
+            {
+              M2006_Axis_Update(HAL_GetTick());
+              HAL_Delay(1U);
+            }
+
+            if ((M2006_Axis_HasFault() == 0U) &&
+                (Route_Run(8U, 1U) != 0U))
+            {
+              xy_test_result = 1U;
+            }
+            else
+            {
+              xy_test_result = 2U;
+            }
           }
           else
           {

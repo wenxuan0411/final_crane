@@ -15,7 +15,6 @@
   {0U, 0.0f, 0.0f, y_list, (uint8_t)ARRAY_SIZE(y_list)}
 #define XY_GROUP(x_target_mm, x_speed, y_list) \
   {1U, x_target_mm, x_speed, y_list, (uint8_t)ARRAY_SIZE(y_list)}
-#define UNCONFIGURED_GROUP {0U, 0.0f, 0.0f, 0, 0U}
 
 /*
  * A motion group contains zero or one X motion and zero or more consecutive
@@ -31,239 +30,370 @@
  */
 static const YMotionSegment_t route_0_to_1_y[] =
 {
-  Y_SEGMENT(500.0f, 3600U),
+  Y_SEGMENT(500.0f, 4000U),
 };
 
 static const MotionGroup_t route_0_to_1[] =
 {
-  XY_GROUP(1000.0f, 5.0f, route_0_to_1_y),
-};
-static const YMotionSegment_t route_0_to_2_y[] =
-{
-  Y_SEGMENT(0.0f, 3600U),
-};
-
-static const MotionGroup_t route_0_to_2[] =
-{
-  XY_GROUP(0.0f, 5.0f, route_0_to_2_y),
+  XY_GROUP(2134.0f, 15.0f, route_0_to_1_y),
 };
 
 static const YMotionSegment_t route_1_to_4_y[] =
 {
-  Y_SEGMENT(-366.0f, 3600U),
+  Y_SEGMENT(-200.0f, 4000U),
+  Y_SEGMENT_AFTER_X(200.0f, 4000U, 1293.0f),
+  Y_SEGMENT_AFTER_X(875.0f, 4000U, -707.0f),
 };
 
 static const MotionGroup_t route_1_to_4[] =
 {
-  XY_GROUP(1610.0f, 5.0f, route_1_to_4_y),
+  XY_GROUP(-1375.0f, 15.0f, route_1_to_4_y),
 };
 
-static const YMotionSegment_t route_1_to_5_y1[] =
+static const YMotionSegment_t route_1_to_5_y[] =
 {
-  Y_SEGMENT(445.297516f, 3000U),
-};
-
-static const YMotionSegment_t route_1_to_5_y2[] =
-{
-  Y_SEGMENT(-62.341652f, 3600U),
+  Y_SEGMENT(-200.0f, 4000U),
+  Y_SEGMENT_AFTER_X(200.0f, 4000U, 1293.0f),
+	Y_SEGMENT_AFTER_X(400.0f, 4000U, -707.0f),
 };
 
 static const MotionGroup_t route_1_to_5[] =
 {
-  XY_GROUP(-43.781250f, 10.0f, route_1_to_5_y1),
-  XY_GROUP(-141.015625f, 15.0f, route_1_to_5_y2),
+  XY_GROUP(-1610.0f, 15.0f, route_1_to_5_y),
 };
 
-/* PA15 motion test, relative to the X/Y positions established at startup. */
-static const YMotionSegment_t xy_motion_test_y[] =
+static const YMotionSegment_t route_1_to_6_y[] =
 {
-  Y_SEGMENT(0.0f, 3600U),
-  Y_SEGMENT_AFTER_X(500.0f, 3600U, -1350.0f),
-};
-
-static const MotionGroup_t xy_motion_test[] =
-{
-  XY_GROUP(-2700.0f, 5.0f, xy_motion_test_y),
+  Y_SEGMENT_AFTER_X(-200.0f, 4000U, 1293.0f),
+  Y_SEGMENT_AFTER_X(0.0f, 4000U, -707.0f),
 };
 
 static const MotionGroup_t route_1_to_6[] =
 {
-  UNCONFIGURED_GROUP,
+  XY_GROUP(-1610.0f, 15.0f, route_1_to_6_y),
+};
+
+static const YMotionSegment_t route_1_to_7_y[] =
+{
+  Y_SEGMENT_AFTER_X(-200.0f, 4000U, 1293.0f),
+	Y_SEGMENT_AFTER_X(-400.0f, 4000U, -707.0f),
 };
 
 static const MotionGroup_t route_1_to_7[] =
 {
-  UNCONFIGURED_GROUP,
+  XY_GROUP(-1610.0f, 15.0f, route_1_to_7_y),
+};
+
+static const YMotionSegment_t route_1_to_8_y[] =
+{
+  Y_SEGMENT_AFTER_X(-875.0f, 4000U, 1293.0f),
 };
 
 static const MotionGroup_t route_1_to_8[] =
 {
-  UNCONFIGURED_GROUP,
+  XY_GROUP(-1375.0f, 15.0f, route_1_to_8_y),
+};
+
+static const YMotionSegment_t route_2_to_4_y[] =
+{
+  Y_SEGMENT_AFTER_X(200.0f, 4000U, 1293.0f),
+  Y_SEGMENT_AFTER_X(875.0f, 4000U, -707.0f),
 };
 
 static const MotionGroup_t route_2_to_4[] =
 {
-  UNCONFIGURED_GROUP,
+  XY_GROUP(-1375.0f, 15.0f, route_2_to_4_y),
+};
+
+static const YMotionSegment_t route_2_to_5_y[] =
+{
+  Y_SEGMENT_AFTER_X(400.0f, 4000U, 1293.0f),
 };
 
 static const MotionGroup_t route_2_to_5[] =
 {
-  UNCONFIGURED_GROUP,
+  XY_GROUP(-1610.0f, 15.0f, route_2_to_5_y),
+};
+
+static const YMotionSegment_t route_2_to_6_y[] =
+{
+  Y_SEGMENT_AFTER_X(200.0f, 4000U, 1293.0f),
+  Y_SEGMENT_AFTER_X(0.0f, 4000U, -707.0f),
 };
 
 static const MotionGroup_t route_2_to_6[] =
 {
-  UNCONFIGURED_GROUP,
+  XY_GROUP(-1610.0f, 15.0f, route_2_to_6_y),
+};
+
+static const YMotionSegment_t route_2_to_7_y[] =
+{
+  Y_SEGMENT(200.0f, 4000U),
+  Y_SEGMENT_AFTER_X(-200.0f, 4000U, 1293.0f),
 };
 
 static const MotionGroup_t route_2_to_7[] =
 {
-  UNCONFIGURED_GROUP,
+  XY_GROUP(-1610.0f, 15.0f, route_2_to_7_y),
+};
+
+static const YMotionSegment_t route_2_to_8_y[] =
+{
+  Y_SEGMENT(200.0f, 4000U),
+  Y_SEGMENT_AFTER_X(-875.0f, 4000U, 1293.0f),
 };
 
 static const MotionGroup_t route_2_to_8[] =
 {
-  UNCONFIGURED_GROUP,
+  XY_GROUP(-1375.0f, 15.0f, route_2_to_8_y),
+};
+
+static const YMotionSegment_t route_3_to_4_y[] =
+{
+  Y_SEGMENT(-200.0f, 4000U),
+  Y_SEGMENT_AFTER_X(200.0f, 4000U, 1293.0f),
+  Y_SEGMENT_AFTER_X(875.0f, 4000U, -707.0f),
 };
 
 static const MotionGroup_t route_3_to_4[] =
 {
-  UNCONFIGURED_GROUP,
+  XY_GROUP(-1375.0f, 15.0f, route_3_to_4_y),
+};
+
+static const YMotionSegment_t route_3_to_5_y[] =
+{
+  Y_SEGMENT(-200.0f, 4000U),
+  Y_SEGMENT_AFTER_X(400.0f, 4000U, 1293.0f),
 };
 
 static const MotionGroup_t route_3_to_5[] =
 {
-  UNCONFIGURED_GROUP,
+  XY_GROUP(-1610.0f, 15.0f, route_3_to_5_y),
+};
+
+static const YMotionSegment_t route_3_to_6_y[] =
+{
+	Y_SEGMENT(-200.0f, 4000U),
+  Y_SEGMENT_AFTER_X(200.0f, 4000U, 1293.0f),
+  Y_SEGMENT_AFTER_X(0.0f, 4000U, -707.0f),
 };
 
 static const MotionGroup_t route_3_to_6[] =
 {
-  UNCONFIGURED_GROUP,
+  XY_GROUP(-1610.0f, 15.0f, route_3_to_6_y),
+};
+
+static const YMotionSegment_t route_3_to_7_y[] =
+{
+  Y_SEGMENT(200.0f, 4000U),
+  Y_SEGMENT_AFTER_X(-400.0f, 4000U, 1293.0f),
 };
 
 static const MotionGroup_t route_3_to_7[] =
 {
-  UNCONFIGURED_GROUP,
+  XY_GROUP(-1610.0f, 15.0f, route_3_to_7_y),
+};
+
+static const YMotionSegment_t route_3_to_8_y[] =
+{
+  Y_SEGMENT(200.0f, 4000U),
+  Y_SEGMENT_AFTER_X(-875.0f, 4000U, 1293.0f),
 };
 
 static const MotionGroup_t route_3_to_8[] =
 {
-  UNCONFIGURED_GROUP,
+  XY_GROUP(-1375.0f, 15.0f, route_3_to_8_y),
+};
+
+static const YMotionSegment_t route_4_to_1_y[] =
+{
+  Y_SEGMENT_AFTER_X(500.0f, 4000U, -707.0f),
 };
 
 static const MotionGroup_t route_4_to_1[] =
 {
-  UNCONFIGURED_GROUP,
+  XY_GROUP(2134.0f, 15.0f, route_4_to_1_y),
+};
+
+static const YMotionSegment_t route_4_to_2_y[] =
+{
+	Y_SEGMENT(200.0f, 4000U),
+  Y_SEGMENT_AFTER_X(-500.0f, 4000U, -707.0f),
 };
 
 static const MotionGroup_t route_4_to_2[] =
 {
-  UNCONFIGURED_GROUP,
+  XY_GROUP(2134.0f, 15.0f, route_4_to_2_y),
+};
+
+static const YMotionSegment_t route_4_to_3_y[] =
+{
+  Y_SEGMENT_AFTER_X(0.0f, 4000U, 1293.0f),
 };
 
 static const MotionGroup_t route_4_to_3[] =
 {
-  UNCONFIGURED_GROUP,
+  XY_GROUP(1864.0f, 15.0f, route_4_to_3_y),
+};
+
+static const YMotionSegment_t route_5_to_1_y[] =
+{
+  Y_SEGMENT_AFTER_X(500.0f, 4000U, -707.0f),
 };
 
 static const MotionGroup_t route_5_to_1[] =
 {
-  UNCONFIGURED_GROUP,
+  XY_GROUP(2134.0f, 15.0f, route_5_to_1_y),
+};
+
+static const YMotionSegment_t route_5_to_2_y[] =
+{
+  Y_SEGMENT_AFTER_X(-500.0f, 4000U, -707.0f),
 };
 
 static const MotionGroup_t route_5_to_2[] =
 {
-  UNCONFIGURED_GROUP,
+  XY_GROUP(2134.0f, 15.0f, route_5_to_2_y),
+};
+
+static const YMotionSegment_t route_5_to_3_y[] =
+{
+  Y_SEGMENT_AFTER_X(0.0f, 4000U, 1293.0f),
 };
 
 static const MotionGroup_t route_5_to_3[] =
 {
-  UNCONFIGURED_GROUP,
+  XY_GROUP(1864.0f, 15.0f, route_5_to_3_y),
+};
+
+static const YMotionSegment_t route_6_to_1_y[] =
+{
+  Y_SEGMENT(500.0f, 4000U),
 };
 
 static const MotionGroup_t route_6_to_1[] =
 {
-  UNCONFIGURED_GROUP,
+  XY_GROUP(2134.0f, 15.0f, route_6_to_1_y),
+};
+
+static const YMotionSegment_t route_6_to_2_y[] =
+{
+  Y_SEGMENT(-500.0f, 4000U),
 };
 
 static const MotionGroup_t route_6_to_2[] =
 {
-  UNCONFIGURED_GROUP,
+  XY_GROUP(2134.0f, 15.0f, route_6_to_2_y),
+};
+
+static const YMotionSegment_t route_6_to_3_y[] =
+{
+  Y_SEGMENT(200.0f, 4000U),
+  Y_SEGMENT_AFTER_X(0.0f, 4000U, 1293.0f),
 };
 
 static const MotionGroup_t route_6_to_3[] =
 {
-  UNCONFIGURED_GROUP,
+  XY_GROUP(1864.0f, 15.0f, route_6_to_3_y),
+};
+
+static const YMotionSegment_t route_7_to_1_y[] =
+{
+  Y_SEGMENT_AFTER_X(500.0f, 4000U, -707.0f),
 };
 
 static const MotionGroup_t route_7_to_1[] =
 {
-  UNCONFIGURED_GROUP,
+  XY_GROUP(2134.0f, 15.0f, route_7_to_1_y),
+};
+
+static const YMotionSegment_t route_7_to_2_y[] =
+{
+  Y_SEGMENT_AFTER_X(-500.0f, 4000U, -707.0f),
 };
 
 static const MotionGroup_t route_7_to_2[] =
 {
-  UNCONFIGURED_GROUP,
+  XY_GROUP(2134.0f, 15.0f, route_7_to_2_y),
+};
+
+static const YMotionSegment_t route_7_to_3_y[] =
+{
+  Y_SEGMENT_AFTER_X(0.0f, 4000U, 1293.0f),
 };
 
 static const MotionGroup_t route_7_to_3[] =
 {
-  UNCONFIGURED_GROUP,
+  XY_GROUP(1864.0f, 15.0f, route_7_to_3_y),
+};
+
+static const YMotionSegment_t route_8_to_1_y[] =
+{
+	Y_SEGMENT(-200.0f, 4000U),
+  Y_SEGMENT_AFTER_X(500.0f, 4000U, -707.0f),
 };
 
 static const MotionGroup_t route_8_to_1[] =
 {
-  UNCONFIGURED_GROUP,
+  XY_GROUP(2134.0f, 15.0f, route_8_to_1_y),
+};
+
+static const YMotionSegment_t route_8_to_2_y[] =
+{
+  Y_SEGMENT_AFTER_X(-500.0f, 4000U, -707.0f),
 };
 
 static const MotionGroup_t route_8_to_2[] =
 {
-  UNCONFIGURED_GROUP,
+  XY_GROUP(2134.0f, 15.0f, route_8_to_2_y),
+};
+
+static const YMotionSegment_t route_8_to_3_y[] =
+{
+  Y_SEGMENT_AFTER_X(0.0f, 4000U, 1293.0f),
 };
 
 static const MotionGroup_t route_8_to_3[] =
 {
-  UNCONFIGURED_GROUP,
+  XY_GROUP(1864.0f, 15.0f, route_8_to_3_y),
 };
 
 static const RoutePlan_t route_table[] =
 {
 	{0U, 1U, route_0_to_1, (uint8_t)ARRAY_SIZE(route_0_to_1), 1U},
-  {0U, 2U, route_0_to_2, (uint8_t)ARRAY_SIZE(route_0_to_2), 1U},
-  {0U, 0U, xy_motion_test, (uint8_t)ARRAY_SIZE(xy_motion_test), 1U},
   {1U, 4U, route_1_to_4, (uint8_t)ARRAY_SIZE(route_1_to_4), 1U},
   {1U, 5U, route_1_to_5, (uint8_t)ARRAY_SIZE(route_1_to_5), 1U},
-  {1U, 6U, route_1_to_6, (uint8_t)ARRAY_SIZE(route_1_to_6), 0U},
-  {1U, 7U, route_1_to_7, (uint8_t)ARRAY_SIZE(route_1_to_7), 0U},
-  {1U, 8U, route_1_to_8, (uint8_t)ARRAY_SIZE(route_1_to_8), 0U},
+  {1U, 6U, route_1_to_6, (uint8_t)ARRAY_SIZE(route_1_to_6), 1U},
+  {1U, 7U, route_1_to_7, (uint8_t)ARRAY_SIZE(route_1_to_7), 1U},
+  {1U, 8U, route_1_to_8, (uint8_t)ARRAY_SIZE(route_1_to_8), 1U},
 
-  {2U, 4U, route_2_to_4, (uint8_t)ARRAY_SIZE(route_2_to_4), 0U},
-  {2U, 5U, route_2_to_5, (uint8_t)ARRAY_SIZE(route_2_to_5), 0U},
-  {2U, 6U, route_2_to_6, (uint8_t)ARRAY_SIZE(route_2_to_6), 0U},
-  {2U, 7U, route_2_to_7, (uint8_t)ARRAY_SIZE(route_2_to_7), 0U},
-  {2U, 8U, route_2_to_8, (uint8_t)ARRAY_SIZE(route_2_to_8), 0U},
+  {2U, 4U, route_2_to_4, (uint8_t)ARRAY_SIZE(route_2_to_4), 1U},
+  {2U, 5U, route_2_to_5, (uint8_t)ARRAY_SIZE(route_2_to_5), 1U},
+  {2U, 6U, route_2_to_6, (uint8_t)ARRAY_SIZE(route_2_to_6), 1U},
+  {2U, 7U, route_2_to_7, (uint8_t)ARRAY_SIZE(route_2_to_7), 1U},
+  {2U, 8U, route_2_to_8, (uint8_t)ARRAY_SIZE(route_2_to_8), 1U},
 
-  {3U, 4U, route_3_to_4, (uint8_t)ARRAY_SIZE(route_3_to_4), 0U},
-  {3U, 5U, route_3_to_5, (uint8_t)ARRAY_SIZE(route_3_to_5), 0U},
-  {3U, 6U, route_3_to_6, (uint8_t)ARRAY_SIZE(route_3_to_6), 0U},
-  {3U, 7U, route_3_to_7, (uint8_t)ARRAY_SIZE(route_3_to_7), 0U},
-  {3U, 8U, route_3_to_8, (uint8_t)ARRAY_SIZE(route_3_to_8), 0U},
+  {3U, 4U, route_3_to_4, (uint8_t)ARRAY_SIZE(route_3_to_4), 1U},
+  {3U, 5U, route_3_to_5, (uint8_t)ARRAY_SIZE(route_3_to_5), 1U},
+  {3U, 6U, route_3_to_6, (uint8_t)ARRAY_SIZE(route_3_to_6), 1U},
+  {3U, 7U, route_3_to_7, (uint8_t)ARRAY_SIZE(route_3_to_7), 1U},
+  {3U, 8U, route_3_to_8, (uint8_t)ARRAY_SIZE(route_3_to_8), 1U},
 
-  {4U, 1U, route_4_to_1, (uint8_t)ARRAY_SIZE(route_4_to_1), 0U},
-  {4U, 2U, route_4_to_2, (uint8_t)ARRAY_SIZE(route_4_to_2), 0U},
-  {4U, 3U, route_4_to_3, (uint8_t)ARRAY_SIZE(route_4_to_3), 0U},
-  {5U, 1U, route_5_to_1, (uint8_t)ARRAY_SIZE(route_5_to_1), 0U},
-  {5U, 2U, route_5_to_2, (uint8_t)ARRAY_SIZE(route_5_to_2), 0U},
-  {5U, 3U, route_5_to_3, (uint8_t)ARRAY_SIZE(route_5_to_3), 0U},
-  {6U, 1U, route_6_to_1, (uint8_t)ARRAY_SIZE(route_6_to_1), 0U},
-  {6U, 2U, route_6_to_2, (uint8_t)ARRAY_SIZE(route_6_to_2), 0U},
-  {6U, 3U, route_6_to_3, (uint8_t)ARRAY_SIZE(route_6_to_3), 0U},
-  {7U, 1U, route_7_to_1, (uint8_t)ARRAY_SIZE(route_7_to_1), 0U},
-  {7U, 2U, route_7_to_2, (uint8_t)ARRAY_SIZE(route_7_to_2), 0U},
-  {7U, 3U, route_7_to_3, (uint8_t)ARRAY_SIZE(route_7_to_3), 0U},
-  {8U, 1U, route_8_to_1, (uint8_t)ARRAY_SIZE(route_8_to_1), 0U},
-  {8U, 2U, route_8_to_2, (uint8_t)ARRAY_SIZE(route_8_to_2), 0U},
-  {8U, 3U, route_8_to_3, (uint8_t)ARRAY_SIZE(route_8_to_3), 0U},
+  {4U, 1U, route_4_to_1, (uint8_t)ARRAY_SIZE(route_4_to_1), 1U},
+  {4U, 2U, route_4_to_2, (uint8_t)ARRAY_SIZE(route_4_to_2), 1U},
+  {4U, 3U, route_4_to_3, (uint8_t)ARRAY_SIZE(route_4_to_3), 1U},
+  {5U, 1U, route_5_to_1, (uint8_t)ARRAY_SIZE(route_5_to_1), 1U},
+  {5U, 2U, route_5_to_2, (uint8_t)ARRAY_SIZE(route_5_to_2), 1U},
+  {5U, 3U, route_5_to_3, (uint8_t)ARRAY_SIZE(route_5_to_3), 1U},
+  {6U, 1U, route_6_to_1, (uint8_t)ARRAY_SIZE(route_6_to_1), 1U},
+  {6U, 2U, route_6_to_2, (uint8_t)ARRAY_SIZE(route_6_to_2), 1U},
+  {6U, 3U, route_6_to_3, (uint8_t)ARRAY_SIZE(route_6_to_3), 1U},
+  {7U, 1U, route_7_to_1, (uint8_t)ARRAY_SIZE(route_7_to_1), 1U},
+  {7U, 2U, route_7_to_2, (uint8_t)ARRAY_SIZE(route_7_to_2), 1U},
+  {7U, 3U, route_7_to_3, (uint8_t)ARRAY_SIZE(route_7_to_3), 1U},
+  {8U, 1U, route_8_to_1, (uint8_t)ARRAY_SIZE(route_8_to_1), 1U},
+  {8U, 2U, route_8_to_2, (uint8_t)ARRAY_SIZE(route_8_to_2), 1U},
+  {8U, 3U, route_8_to_3, (uint8_t)ARRAY_SIZE(route_8_to_3), 1U},
 };
 
 const RoutePlan_t *RoutePlan_Find(uint8_t from_position,
