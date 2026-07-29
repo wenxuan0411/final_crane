@@ -6,7 +6,7 @@
 #define M2006_SPEED_KI                    8.0f
 #define M2006_SPEED_INTEGRAL_LIMIT        2500.0f
 #define M2006_ACCEL_LIMIT_RPM_S           18000.0f
-#define M2006_MAX_ALLOWED_RPM             6000
+#define M2006_MAX_ALLOWED_RPM             9000
 #define M2006_HOLD_POSITION_KP_RPM_REV     120.0f
 #define M2006_HOLD_MAX_SPEED_RPM           300.0f
 #define M2006_CONTROL_PERIOD_MS           10U

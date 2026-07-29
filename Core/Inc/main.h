@@ -67,6 +67,7 @@ uint8_t GRIP_03_GREEN(void);
 uint8_t GRIP_03_WHITE(void);
 uint8_t RELEASE_04_08(void);
 uint8_t RELEASE_05_06_07(void);
+void Crane_EmergencyStop(void);
 extern volatile uint8_t z_feedback_valid;
 extern volatile uint8_t z_feedback_error;
 extern volatile uint8_t z_feedback_gear_ratio_valid;
