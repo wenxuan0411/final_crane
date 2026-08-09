@@ -183,8 +183,7 @@ typedef enum
 #define START_KEY_PRESSED_STATE             GPIO_PIN_RESET
 #define START_KEY_DEBOUNCE_MS               30U
 #define TRANSPORT_TASK_COUNT                 3U
-#define TRANSPORT_RUN_COUNT                  2U
-#define SECOND_RUN_YELLOW_GREEN_OFFSET_MM    5.0f
+#define SECOND_RUN_GREEN_OFFSET_MM           5.0f
 #define SECOND_RUN_WHITE_OFFSET_MM           10.0f
 #define BEAN_TYPE_COUNT                      3U
 #define VISION_COLOR_RESULT_COUNT            3U
@@ -192,6 +191,8 @@ typedef enum
 #define VISION_RESULT_TIMEOUT_MS             15000U
 #define VISION_COMMAND_INTERVAL_MS           20U
 #define VISION_STOP_REPEAT_COUNT              3U
+#define HOST_READY_TX_TIMEOUT_MS             100U
+#define HOST_READY_TX_INTERVAL_MS            100U
 #define RUN_RESULT_READY                      0U
 #define RUN_RESULT_SUCCESS                    1U
 #define RUN_RESULT_VISION_FAILED              2U
@@ -257,6 +258,8 @@ static float grip_depth_offset_mm = 0.0f;
 volatile float y_calibration_position_rev = 0.0f;
 volatile uint8_t y_calibration_position_valid = 0U;
 volatile uint8_t xy_test_result = 0U;
+static uint32_t host_ready_last_tx_tick = 0U;
+static uint8_t host_ready_sent = 0U;
 volatile VisionStatus_t vision_status = VISION_STATUS_IDLE;
 volatile uint8_t color_vision_result[VISION_COLOR_RESULT_COUNT] = {0};
 volatile uint8_t digit_vision_result[VISION_DIGIT_RESULT_COUNT] = {0};
@@ -300,6 +303,7 @@ static uint8_t ReleaseZ_ArmForRoute(uint8_t from_position,
 static uint8_t ReleaseZ_UpdateForGroup(const MotionGroup_t *group,
                                        uint32_t now);
 static uint8_t ReleaseZ_EnsureAtReleaseHeight(void);
+static void Crane_RunOnce(void);
 
 /* USER CODE END PFP */
 
@@ -1415,7 +1419,7 @@ uint8_t GRIP_03_GREEN(void)
 	
 uint8_t GRIP_03_WHITE(void)
 {
-  if (Z_move(185.0f - grip_depth_offset_mm,
+  if (Z_move(180.0f - grip_depth_offset_mm,
              Z_TEST_SPEED_RAD_S) == 0U)
   {
     return 0U;
@@ -2365,6 +2369,44 @@ static uint8_t Bean_ToTargetBoxId(BeanType_t bean)
   }
 }
 
+static uint8_t Bean_GetTransportRunCount(BeanType_t bean)
+{
+  switch (bean)
+  {
+    case BEAN_YELLOW:
+    case BEAN_GREEN:
+    case BEAN_WHITE:
+      return 2U;
+
+    default:
+      return 0U;
+  }
+}
+
+static void Host_SendReady(void)
+{
+  static uint8_t ready_message[] = "READY";
+
+  if (HAL_UART_Transmit(&huart1,
+                        ready_message,
+                        sizeof(ready_message) - 1U,
+                        HOST_READY_TX_TIMEOUT_MS) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+static void Host_Ready_Update(uint32_t now)
+{
+  if ((host_ready_sent == 0U) ||
+      ((now - host_ready_last_tx_tick) >= HOST_READY_TX_INTERVAL_MS))
+  {
+    Host_SendReady();
+    host_ready_last_tx_tick = now;
+    host_ready_sent = 1U;
+  }
+}
+
 static void Vision_ArmReceiver(UART_HandleTypeDef *huart,
                                VisionUartReceiver_t *receiver)
 {
@@ -2809,18 +2851,26 @@ static uint8_t TransportPlan_Validate(void)
        task_order_index < TRANSPORT_TASK_COUNT;
        task_order_index++)
   {
+    const TransportTask_t *task;
+    uint8_t run_count;
+
     task_index = transport_task_order[task_order_index];
     if (task_index >= TRANSPORT_TASK_COUNT)
     {
       return 0U;
     }
 
+    task = &transport_task_table[task_index];
+    run_count = Bean_GetTransportRunCount(task->bean);
+    if (run_count == 0U)
+    {
+      return 0U;
+    }
+
     for (run_index = 0U;
-         run_index < TRANSPORT_RUN_COUNT;
+         run_index < run_count;
          run_index++)
     {
-      const TransportTask_t *task = &transport_task_table[task_index];
-
       if ((TransportPlan_IsRouteConfigured(current_position,
                                             task->pick_position) == 0U) ||
           (TransportPlan_IsRouteConfigured(task->pick_position,
@@ -2859,19 +2909,22 @@ static uint8_t TransportPlan_Run(void)
        task_order_index < TRANSPORT_TASK_COUNT;
        task_order_index++)
   {
+    const TransportTask_t *task;
+    uint8_t run_count;
+
     task_index = transport_task_order[task_order_index];
+    task = &transport_task_table[task_index];
+    run_count = Bean_GetTransportRunCount(task->bean);
     for (run_index = 0U;
-         run_index < TRANSPORT_RUN_COUNT;
+         run_index < run_count;
          run_index++)
     {
-      const TransportTask_t *task = &transport_task_table[task_index];
-
       if (run_index == 1U)
       {
         grip_depth_offset_mm =
             (task->bean == BEAN_WHITE) ?
             SECOND_RUN_WHITE_OFFSET_MM :
-            SECOND_RUN_YELLOW_GREEN_OFFSET_MM;
+            SECOND_RUN_GREEN_OFFSET_MM;
       }
       else
       {
@@ -2901,6 +2954,38 @@ static uint8_t TransportPlan_Run(void)
   grip_depth_offset_mm = 0.0f;
   Motion_StopAll();
   return 1U;
+}
+
+static void Crane_RunOnce(void)
+{
+  if (PA15_Z_START_ONLY != 0U)
+  {
+    if (Z_START() == 0U)
+    {
+      Motion_StopAll();
+      Crane_EmergencyStop();
+      xy_test_result = RUN_RESULT_MOTION_FAILED;
+    }
+    else
+    {
+      xy_test_result = RUN_RESULT_SUCCESS;
+    }
+  }
+  else if (Vision_RecognizeAndBuildTransportPlan() == 0U)
+  {
+    Motion_StopAll();
+    xy_test_result = RUN_RESULT_VISION_FAILED;
+  }
+  else if (TransportPlan_Run() == 0U)
+  {
+    Motion_StopAll();
+    Crane_EmergencyStop();
+    xy_test_result = RUN_RESULT_MOTION_FAILED;
+  }
+  else
+  {
+    xy_test_result = RUN_RESULT_SUCCESS;
+  }
 }
 
 /* USER CODE END 0 */
@@ -3002,6 +3087,12 @@ int main(void)
         y_calibration_position_valid = 0U;
       }
 
+      if ((xy_test_result == RUN_RESULT_READY) ||
+          (xy_test_result == RUN_RESULT_VISION_FAILED))
+      {
+        Host_Ready_Update(HAL_GetTick());
+      }
+
       if (((xy_test_result == RUN_RESULT_READY) ||
            (xy_test_result == RUN_RESULT_VISION_FAILED)) &&
           (HAL_GPIO_ReadPin(START_KEY_GPIO_Port, START_KEY_Pin) ==
@@ -3011,37 +3102,7 @@ int main(void)
         if (HAL_GPIO_ReadPin(START_KEY_GPIO_Port, START_KEY_Pin) ==
             START_KEY_PRESSED_STATE)
         {
-          if (PA15_Z_START_ONLY != 0U)
-          {
-            if (Z_START() == 0U)
-            {
-              Motion_StopAll();
-              Crane_EmergencyStop();
-              xy_test_result = RUN_RESULT_MOTION_FAILED;
-            }
-            else
-            {
-              xy_test_result = RUN_RESULT_SUCCESS;
-            }
-          }
-          else if (Vision_RecognizeAndBuildTransportPlan() == 0U)
-          {
-            Motion_StopAll();
-            xy_test_result = RUN_RESULT_VISION_FAILED;
-          }
-          else
-          {
-            if (TransportPlan_Run() == 0U)
-            {
-              Motion_StopAll();
-              Crane_EmergencyStop();
-              xy_test_result = RUN_RESULT_MOTION_FAILED;
-            }
-            else
-            {
-              xy_test_result = RUN_RESULT_SUCCESS;
-            }
-          }
+          Crane_RunOnce();
 
           while (HAL_GPIO_ReadPin(START_KEY_GPIO_Port, START_KEY_Pin) ==
                  START_KEY_PRESSED_STATE)
