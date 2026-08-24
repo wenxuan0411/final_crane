@@ -27,6 +27,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdint.h>
+#include <math.h>
 #include "m2006_axis.h"
 #include "route_plan.h"
 
@@ -138,7 +139,7 @@ typedef enum
 #define DM3519_FALLBACK_TMAX_NM            18.0f
 #define DM3519_FALLBACK_GEAR_RATIO          (3591.0f / 187.0f)
 #define X_RUN_SPEED_RAD_S                  35.0f
-#define X_FEEDBACK_RAD_PER_MM               (2.0f / 39.8f)
+#define X_FEEDBACK_RAD_PER_MM               0.0262274447f
 #define X_COMMAND_REFRESH_MS               20U
 #define X_ACCEL_TIME_RATIO                 0.25f
 #define X_CRUISE_TIME_RATIO                0.50f
@@ -162,15 +163,16 @@ typedef enum
 #define Z_POSITION_MAX_MM                   305.0f
 #define Z_POSITION_TOLERANCE_MM             0.5f
 #define Z_APPROACH_TIME_S                   0.10f
-#define Z_TEST_TARGET_POSITION_MM           285.0f
+#define Z_TEST_TARGET_POSITION_MM           290.0f
 #define Z_TEST_SPEED_RAD_S                  7.0f
-#define Z_GRIP_RETRACT_TARGET_MM            290.0f
-#define Z_GRIP_01_XY_START_POSITION_MM      250.0f
-#define Z_GRIP_02_XY_START_POSITION_MM      200.0f
-#define Z_GRIP_03_XY_START_POSITION_MM      280.0f
+#define Z_GRIP_RETRACT_TARGET_MM            285.0f
+#define Z_GRIP_01_XY_START_POSITION_MM      255.0f
+#define Z_GRIP_02_XY_START_POSITION_MM      205.0f
+#define Z_GRIP_03_XY_START_POSITION_MM      285.0f
 #define RELEASE_04_08_Z_PREPARE_X_DISTANCE_MM 10.0f
 #define RELEASE_05_06_07_Z_PREPARE_X_DISTANCE_MM 500.0f
-#define RELEASE_Z_TARGET_POSITION_MM         140.0f
+#define RELEASE_Z_PREPARE_Y_DISTANCE_MM       100.0f
+#define RELEASE_Z_TARGET_POSITION_MM         145.0f
 #define Z_COMMAND_REFRESH_MS                20U
 #define Z_FEEDBACK_TIMEOUT_MS               100U
 #define Z_FEEDBACK_ACQUIRE_TIMEOUT_MS       300U
@@ -178,8 +180,9 @@ typedef enum
 #define Z_STOP_REPEAT_COUNT                 3U
 #define Z_STOP_REPEAT_INTERVAL_MS           2U
 #define Y_TARGET_SETTLE_TIMEOUT_MS         3000U
-#define Y_APPROACH_KP_RPM_REV               120.0f
-#define Y_HOLD_ENTRY_TOLERANCE_MM           2.0f
+#define Y_FINE_APPROACH_KP_RPM_REV          600.0f
+#define Y_HOLD_ENTRY_TOLERANCE_MM           1.0f
+#define Y_HOLD_ENTRY_MAX_SPEED_RPM          100.0f
 #define START_KEY_PRESSED_STATE             GPIO_PIN_RESET
 #define START_KEY_DEBOUNCE_MS               30U
 #define TRANSPORT_TASK_COUNT                 3U
@@ -251,6 +254,8 @@ static uint8_t release_z_prepare_armed = 0U;
 static uint8_t release_z_prepare_started = 0U;
 static const MotionGroup_t *release_z_prepare_group = 0;
 static float release_z_prepare_x_distance_mm = 0.0f;
+static uint8_t release_z_prepare_use_y_position = 0U;
+static float release_z_prepare_y_target_position_mm = 0.0f;
 static VisionUartReceiver_t color_vision_receiver = {0};
 static VisionUartReceiver_t digit_vision_receiver = {0};
   static volatile uint8_t emergency_stop_active = 0U;
@@ -294,6 +299,10 @@ void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 static uint8_t X_TargetMmToFeedbackRad(float target_position_mm,
                                        float *target_position_rad);
+static uint8_t X_HasReachedTrigger(uint32_t now,
+                                   float trigger_position_mm,
+                                   float direction_velocity_rad_s,
+                                   uint8_t *reached);
 static uint8_t TransportPlan_Run(void);
 static uint8_t Z_AsyncMove_Update(uint32_t now);
 static uint8_t Vision_RecognizeAndBuildTransportPlan(void);
@@ -1063,6 +1072,8 @@ static void ReleaseZ_Disarm(void)
   release_z_prepare_started = 0U;
   release_z_prepare_group = 0;
   release_z_prepare_x_distance_mm = 0.0f;
+  release_z_prepare_use_y_position = 0U;
+  release_z_prepare_y_target_position_mm = 0.0f;
 }
 
 static uint8_t ReleaseZ_ArmForRoute(uint8_t from_position,
@@ -1086,10 +1097,28 @@ static uint8_t ReleaseZ_ArmForRoute(uint8_t from_position,
     if (route->groups[group_index].x_enabled != 0U)
     {
       release_z_prepare_group = &route->groups[group_index];
-      release_z_prepare_x_distance_mm =
-          ((to_position == 4U) || (to_position == 8U)) ?
-          RELEASE_04_08_Z_PREPARE_X_DISTANCE_MM :
-          RELEASE_05_06_07_Z_PREPARE_X_DISTANCE_MM;
+      if (((from_position == 1U) && (to_position == 4U)) ||
+          ((from_position == 2U) && (to_position == 8U)))
+      {
+        if ((release_z_prepare_group->y_segments == 0) ||
+            (release_z_prepare_group->y_segment_count == 0U))
+        {
+          ReleaseZ_Disarm();
+          return 0U;
+        }
+        release_z_prepare_use_y_position = 1U;
+        release_z_prepare_y_target_position_mm =
+            release_z_prepare_group->y_segments[
+                release_z_prepare_group->y_segment_count - 1U]
+                .y_target_position_mm;
+      }
+      else
+      {
+        release_z_prepare_x_distance_mm =
+            ((to_position == 4U) || (to_position == 8U)) ?
+            RELEASE_04_08_Z_PREPARE_X_DISTANCE_MM :
+            RELEASE_05_06_07_Z_PREPARE_X_DISTANCE_MM;
+      }
       release_z_prepare_armed = 1U;
       return 1U;
     }
@@ -1287,7 +1316,7 @@ uint8_t Z_move(float target_position_mm, float speed_rad_s)
 uint8_t Z_START(void)
 {
 
-  if (Z_move(240.0f, Z_TEST_SPEED_RAD_S) == 0U)
+  if (Z_move(245.0f, Z_TEST_SPEED_RAD_S) == 0U)
   {
     return 0U;
   }
@@ -1299,7 +1328,7 @@ uint8_t Z_START(void)
 
 uint8_t GRIP_02_YELLOW(void)
 {
-  if (Z_move(74.0f - grip_depth_offset_mm,
+  if (Z_move(79.0f - grip_depth_offset_mm,
              Z_TEST_SPEED_RAD_S) == 0U)
   {
     return 0U;
@@ -1314,7 +1343,7 @@ uint8_t GRIP_02_YELLOW(void)
 
 uint8_t GRIP_02_GREEN(void)
 {
-  if (Z_move(75.0f - grip_depth_offset_mm,
+  if (Z_move(80.0f - grip_depth_offset_mm,
              Z_TEST_SPEED_RAD_S) == 0U)
   {
     return 0U;
@@ -1329,7 +1358,7 @@ uint8_t GRIP_02_GREEN(void)
 
 uint8_t GRIP_02_WHITE(void)
 {
-  if (Z_move(75.0f - grip_depth_offset_mm,
+  if (Z_move(80.0f - grip_depth_offset_mm,
              Z_TEST_SPEED_RAD_S) == 0U)
   {
     return 0U;
@@ -1344,7 +1373,7 @@ uint8_t GRIP_02_WHITE(void)
 
 uint8_t GRIP_01_YELLOW(void)
 {
-  if (Z_move(124.0f - grip_depth_offset_mm,
+  if (Z_move(129.0f - grip_depth_offset_mm,
              Z_TEST_SPEED_RAD_S) == 0U)
   {
     return 0U;
@@ -1359,7 +1388,7 @@ uint8_t GRIP_01_YELLOW(void)
 
 uint8_t GRIP_01_GREEN(void)
 {
-  if (Z_move(125.0f - grip_depth_offset_mm,
+  if (Z_move(130.0f - grip_depth_offset_mm,
              Z_TEST_SPEED_RAD_S) == 0U)
   {
     return 0U;
@@ -1374,7 +1403,7 @@ uint8_t GRIP_01_GREEN(void)
 
 uint8_t GRIP_01_WHITE(void)
 {	
-  if (Z_move(125.0f - grip_depth_offset_mm,
+  if (Z_move(130.0f - grip_depth_offset_mm,
              Z_TEST_SPEED_RAD_S) == 0U)
   {
     return 0U;
@@ -1389,7 +1418,7 @@ uint8_t GRIP_01_WHITE(void)
 
 uint8_t GRIP_03_YELLOW(void)
 {
-  if (Z_move(174.0f - grip_depth_offset_mm,
+  if (Z_move(179.0f - grip_depth_offset_mm,
              Z_TEST_SPEED_RAD_S) == 0U)
   {
     return 0U;
@@ -1404,7 +1433,7 @@ uint8_t GRIP_03_YELLOW(void)
 
 uint8_t GRIP_03_GREEN(void)
 {
-  if (Z_move(175.0f - grip_depth_offset_mm,
+  if (Z_move(180.0f - grip_depth_offset_mm,
              Z_TEST_SPEED_RAD_S) == 0U)
   {
     return 0U;
@@ -1419,7 +1448,7 @@ uint8_t GRIP_03_GREEN(void)
 	
 uint8_t GRIP_03_WHITE(void)
 {
-  if (Z_move(180.0f - grip_depth_offset_mm,
+  if (Z_move(185.0f - grip_depth_offset_mm,
              Z_TEST_SPEED_RAD_S) == 0U)
   {
     return 0U;
@@ -1446,7 +1475,7 @@ uint8_t RELEASE_04_08(void)
   HAL_Delay(GRIP_ACTION_MS);
 
   RotationServo_SetAngle(ROTATION_SERVO_START_ANGLE);
-  return Z_move(290.0f, Z_TEST_SPEED_RAD_S);
+  return Z_move(285.0f, Z_TEST_SPEED_RAD_S);
 }
 
 uint8_t RELEASE_05_06_07(void)
@@ -1460,7 +1489,7 @@ uint8_t RELEASE_05_06_07(void)
   GripperServo_SetAngle(GRIPPER_SERVO_OPEN_ANGLE);
   HAL_Delay(GRIP_ACTION_MS);
 
-  return Z_AsyncMove_Start(290.0f, Z_TEST_SPEED_RAD_S);
+  return Z_AsyncMove_Start(285.0f, Z_TEST_SPEED_RAD_S);
 }
 
 static float X_ClampVelocity(float velocity_rad_s,
@@ -1807,6 +1836,8 @@ static uint8_t ReleaseZ_UpdateForGroup(const MotionGroup_t *group,
 {
   float x_position_rad;
   float x_position_mm;
+  float y_position_rev;
+  float y_position_mm;
   float remaining_mm;
 
   if ((release_z_prepare_armed == 0U) ||
@@ -1825,17 +1856,32 @@ static uint8_t ReleaseZ_UpdateForGroup(const MotionGroup_t *group,
     return 1U;
   }
 
-  if (X_GetAxisPosition(now, &x_position_rad) == 0U)
+  if (release_z_prepare_use_y_position != 0U)
   {
-    return 0U;
+    if (M2006_Axis_GetPositionRev(&y_position_rev) == 0U)
+    {
+      return 0U;
+    }
+    y_position_mm = y_position_rev / ROUTE_Y_FEEDBACK_REV_PER_MM;
+    remaining_mm = release_z_prepare_y_target_position_mm - y_position_mm;
   }
-  x_position_mm = x_position_rad / X_FEEDBACK_RAD_PER_MM;
-  remaining_mm = group->x_target_position_mm - x_position_mm;
+  else
+  {
+    if (X_GetAxisPosition(now, &x_position_rad) == 0U)
+    {
+      return 0U;
+    }
+    x_position_mm = x_position_rad / X_FEEDBACK_RAD_PER_MM;
+    remaining_mm = group->x_target_position_mm - x_position_mm;
+  }
   if (remaining_mm < 0.0f)
   {
     remaining_mm = -remaining_mm;
   }
-  if (remaining_mm > release_z_prepare_x_distance_mm)
+  if (((release_z_prepare_use_y_position != 0U) &&
+       (remaining_mm > RELEASE_Z_PREPARE_Y_DISTANCE_MM)) ||
+      ((release_z_prepare_use_y_position == 0U) &&
+       (remaining_mm > release_z_prepare_x_distance_mm)))
   {
     return 1U;
   }
@@ -2004,11 +2050,15 @@ static uint8_t Y_UpdateApproachTarget(float target_position_rev,
   float current_position_rev;
   float position_error_rev;
   float absolute_error_rev;
+  float feedback_speed_abs_rpm;
+  float fine_approach_speed_rpm;
   float speed_rpm;
+  int16_t feedback_speed_rpm;
   int16_t target_rpm;
 
   if ((ready_to_hold == 0) ||
-      (M2006_Axis_GetPositionRev(&current_position_rev) == 0U))
+      (M2006_Axis_GetPositionRev(&current_position_rev) == 0U) ||
+      (M2006_Axis_GetSpeedRpm(&feedback_speed_rpm) == 0U))
   {
     return 0U;
   }
@@ -2016,14 +2066,26 @@ static uint8_t Y_UpdateApproachTarget(float target_position_rev,
   position_error_rev = target_position_rev - current_position_rev;
   absolute_error_rev = (position_error_rev >= 0.0f) ?
                        position_error_rev : -position_error_rev;
+  feedback_speed_abs_rpm = (feedback_speed_rpm >= 0) ?
+                           (float)feedback_speed_rpm :
+                           -(float)feedback_speed_rpm;
   if (absolute_error_rev <=
-      (Y_HOLD_ENTRY_TOLERANCE_MM * ROUTE_Y_FEEDBACK_REV_PER_MM))
+      (Y_HOLD_ENTRY_TOLERANCE_MM * ROUTE_Y_FEEDBACK_REV_PER_MM) &&
+      feedback_speed_abs_rpm <= Y_HOLD_ENTRY_MAX_SPEED_RPM)
   {
     *ready_to_hold = 1U;
     return 1U;
   }
 
-  speed_rpm = Y_APPROACH_KP_RPM_REV * absolute_error_rev;
+  /* v^2 = 120 * a * distance, with v in rpm and distance in revolutions. */
+  speed_rpm = sqrtf(120.0f * M2006_AXIS_ACCEL_LIMIT_RPM_S *
+                    absolute_error_rev);
+  fine_approach_speed_rpm = Y_FINE_APPROACH_KP_RPM_REV *
+                            absolute_error_rev;
+  if (speed_rpm > fine_approach_speed_rpm)
+  {
+    speed_rpm = fine_approach_speed_rpm;
+  }
   if (speed_rpm > (float)max_speed_rpm)
   {
     speed_rpm = (float)max_speed_rpm;
@@ -2103,7 +2165,6 @@ static uint8_t XY_RunGroup(const MotionGroup_t *group)
     Motion_StopAll();
     return 0U;
   }
-
   if (group->y_segment_count > 0U)
   {
     y_segment = &group->y_segments[0];
@@ -2239,8 +2300,10 @@ static uint8_t XY_RunGroup(const MotionGroup_t *group)
         }
         if (ready_to_hold != 0U)
         {
+          /* Keep zero speed after arrival; do not pull back to the theoretical
+             position with the position-hold controller. */
           if ((y_running != 0U) &&
-              (M2006_Axis_StartPositionHold(y_target_position_rev) == 0U))
+              (M2006_Axis_StartSpeed(0) == 0U))
           {
             Motion_StopAll();
             return 0U;
@@ -2376,7 +2439,7 @@ static uint8_t Bean_GetTransportRunCount(BeanType_t bean)
     case BEAN_YELLOW:
     case BEAN_GREEN:
     case BEAN_WHITE:
-      return 2U;
+      return 1U;
 
     default:
       return 0U;

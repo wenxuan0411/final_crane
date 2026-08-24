@@ -4,7 +4,7 @@
 #define ARRAY_SIZE(array) (sizeof(array) / sizeof((array)[0]))
 /* Revision: raise the X path-speed validation limit from 15 to 35 rad/s. */
 #define ROUTE_X_MAX_SPEED_RAD_S 35.0f
-#define ROUTE_Y_MAX_SPEED_RPM   11000U
+#define ROUTE_Y_MAX_SPEED_RPM   14000U
 #define Y_SEGMENT(target_mm, speed_rpm) \
   {target_mm, speed_rpm, 0U, 0.0f}
 #define Y_SEGMENT_AFTER_X(target_mm, speed_rpm, x_trigger_mm) \
@@ -20,7 +20,8 @@
  * A motion group contains zero or one X motion and zero or more consecutive
  * Y motions. X and the first Y segment start together. Later Y segments start
  * as soon as the previous Y target is reached without restarting X, unless
- * Y_SEGMENT_AFTER_X is used to wait for an X feedback position first.
+ * Y_SEGMENT_AFTER_X is used to wait for the theoretical X trajectory time at
+ * a configured X position first.
  *
  * X-only group: set y_segments = 0 and y_segment_count = 0U.
  * Y-only group: set x_enabled = 0U and provide one or more Y segments.
@@ -35,7 +36,7 @@ static const YMotionSegment_t route_0_to_1_y[] =
 
 static const MotionGroup_t route_0_to_1[] =
 {
-  XY_GROUP(2144.0f, 30.0f, route_0_to_1_y),
+  XY_GROUP(2144.0f, 25.0f, route_0_to_1_y),
 };
 
 static const YMotionSegment_t route_0_to_3_y[] =
@@ -46,116 +47,113 @@ static const YMotionSegment_t route_0_to_3_y[] =
 
 static const MotionGroup_t route_0_to_3[] =
 {
-  XY_GROUP(1884.0f, 30.0f, route_0_to_3_y),
+  XY_GROUP(1884.0f, 25.0f, route_0_to_3_y),
 };
 
 static const YMotionSegment_t route_1_to_4_y[] =
 {
-  Y_SEGMENT(-230.0f, 9000U),
-  Y_SEGMENT_AFTER_X(883.0f, 9000U, 1293.0f),
+  Y_SEGMENT(-190.0f, 13000U),
+  Y_SEGMENT_AFTER_X(883.0f, 10000U, 1293.0f),
 };
 
 static const MotionGroup_t route_1_to_4[] =
 {
-  XY_GROUP(-1375.0f, 30.0f, route_1_to_4_y),
+  XY_GROUP(-1375.0f, 20.0f, route_1_to_4_y),
 };
 
 static const YMotionSegment_t route_1_to_5_y[] =
 {
-  Y_SEGMENT(-230.0f, 9000U),
+  Y_SEGMENT(-190.0f, 13000U),
   Y_SEGMENT_AFTER_X(408.0f, 9000U, 1293.0f),
 };
 
 static const MotionGroup_t route_1_to_5[] =
 {
-  XY_GROUP(-1603.0f, 30.0f, route_1_to_5_y),
+  XY_GROUP(-1603.0f, 20.0f, route_1_to_5_y),
 };
 
 static const YMotionSegment_t route_1_to_6_y[] =
 {
-  Y_SEGMENT_AFTER_X(-230.0f, 9000U, 1293.0f),
+  Y_SEGMENT_AFTER_X(-210.0f, 9000U, 1900.0f),
   Y_SEGMENT_AFTER_X(10.0f, 9000U, -707.0f),
 };
 
 static const MotionGroup_t route_1_to_6[] =
 {
-  XY_GROUP(-1603.0f, 30.0f, route_1_to_6_y),
+  XY_GROUP(-1603.0f, 25.0f, route_1_to_6_y),
 };
 
 static const YMotionSegment_t route_1_to_7_y[] =
 {
-  Y_SEGMENT_AFTER_X(-230.0f, 9000U, 1293.0f),
-	Y_SEGMENT_AFTER_X(-390.0f, 9000U, -707.0f),
+	Y_SEGMENT_AFTER_X(-390.0f, 9000U, 1900.0f),
 };
 
 static const MotionGroup_t route_1_to_7[] =
 {
-  XY_GROUP(-1603.0f, 30.0f, route_1_to_7_y),
+  XY_GROUP(-1603.0f, 25.0f, route_1_to_7_y),
 };
 
 static const YMotionSegment_t route_1_to_8_y[] =
 {
-	Y_SEGMENT(230.0f, 9000U),
-  Y_SEGMENT_AFTER_X(-865.0f, 9000U, 1293.0f),
+	Y_SEGMENT_AFTER_X(-865.0f, 9000U, 1900.0f),
 };
 
 static const MotionGroup_t route_1_to_8[] =
 {
-  XY_GROUP(-1375.0f, 30.0f, route_1_to_8_y),
+  XY_GROUP(-1375.0f, 25.0f, route_1_to_8_y),
 };
 
 static const YMotionSegment_t route_2_to_4_y[] =
 {
-	Y_SEGMENT(-230.0f, 9000U),
-  Y_SEGMENT_AFTER_X(883.0f, 9000U, 1293.0f),
+	Y_SEGMENT_AFTER_X(883.0f, 9000U, 1900.0f),
 };
 
 static const MotionGroup_t route_2_to_4[] =
 {
-  XY_GROUP(-1375.0f, 30.0f, route_2_to_4_y),
+  XY_GROUP(-1375.0f, 25.0f, route_2_to_4_y),
 };
 
 static const YMotionSegment_t route_2_to_5_y[] =
 {
-  Y_SEGMENT_AFTER_X(408.0f, 9000U, 1293.0f),
+  Y_SEGMENT_AFTER_X(408.0f, 9000U, 1900.0f),
 };
 
 static const MotionGroup_t route_2_to_5[] =
 {
-  XY_GROUP(-1603.0f, 30.0f, route_2_to_5_y),
+  XY_GROUP(-1603.0f, 25.0f, route_2_to_5_y),
 };
 
 static const YMotionSegment_t route_2_to_6_y[] =
 {
-  Y_SEGMENT_AFTER_X(230.0f, 9000U, 1293.0f),
+  Y_SEGMENT_AFTER_X(200.0f, 7500U, 1800.0f),
   Y_SEGMENT_AFTER_X(10.0f, 9000U, -707.0f),
 };
 
 static const MotionGroup_t route_2_to_6[] =
 {
-  XY_GROUP(-1603.0f, 30.0f, route_2_to_6_y),
+  XY_GROUP(-1603.0f, 25.0f, route_2_to_6_y),
 };
 
 static const YMotionSegment_t route_2_to_7_y[] =
 {
-  Y_SEGMENT(230.0f, 9000U),
+  Y_SEGMENT(190.0f, 13000U),
   Y_SEGMENT_AFTER_X(-390.0f, 9000U, 1293.0f),
 };
 
 static const MotionGroup_t route_2_to_7[] =
 {
-  XY_GROUP(-1603.0f, 30.0f, route_2_to_7_y),
+  XY_GROUP(-1603.0f, 20.0f, route_2_to_7_y),
 };
 
 static const YMotionSegment_t route_2_to_8_y[] =
 {
-  Y_SEGMENT(230.0f, 9000U),
-  Y_SEGMENT_AFTER_X(-865.0f, 9000U, 1293.0f),
+  Y_SEGMENT(190.0f, 13000U),
+  Y_SEGMENT_AFTER_X(-865.0f, 10000U, 1293.0f),
 };
 
 static const MotionGroup_t route_2_to_8[] =
 {
-  XY_GROUP(-1375.0f, 30.0f, route_2_to_8_y),
+  XY_GROUP(-1375.0f, 20.0f, route_2_to_8_y),
 };
 
 static const YMotionSegment_t route_3_to_4_y[] =
@@ -166,7 +164,7 @@ static const YMotionSegment_t route_3_to_4_y[] =
 
 static const MotionGroup_t route_3_to_4[] =
 {
-  XY_GROUP(-1375.0f, 30.0f, route_3_to_4_y),
+  XY_GROUP(-1375.0f, 25.0f, route_3_to_4_y),
 };
 
 static const YMotionSegment_t route_3_to_5_y[] =
@@ -177,19 +175,19 @@ static const YMotionSegment_t route_3_to_5_y[] =
 
 static const MotionGroup_t route_3_to_5[] =
 {
-  XY_GROUP(-1603.0f, 30.0f, route_3_to_5_y),
+  XY_GROUP(-1603.0f, 25.0f, route_3_to_5_y),
 };
 
 static const YMotionSegment_t route_3_to_6_y[] =
 {
-	Y_SEGMENT(-230.0f, 9000U),
-  Y_SEGMENT_AFTER_X(230.0f, 9000U, 1293.0f),
+	Y_SEGMENT(-210.0f, 9000U),
+  Y_SEGMENT_AFTER_X(210.0f, 9000U, 1293.0f),
   Y_SEGMENT_AFTER_X(10.0f, 9000U, -707.0f),
 };
 
 static const MotionGroup_t route_3_to_6[] =
 {
-  XY_GROUP(-1603.0f, 30.0f, route_3_to_6_y),
+  XY_GROUP(-1603.0f, 25.0f, route_3_to_6_y),
 };
 
 static const YMotionSegment_t route_3_to_7_y[] =
@@ -200,18 +198,18 @@ static const YMotionSegment_t route_3_to_7_y[] =
 
 static const MotionGroup_t route_3_to_7[] =
 {
-  XY_GROUP(-1603.0f, 30.0f, route_3_to_7_y),
+  XY_GROUP(-1603.0f, 25.0f, route_3_to_7_y),
 };
 
 static const YMotionSegment_t route_3_to_8_y[] =
 {
-  Y_SEGMENT(230.0f, 9000U),
-  Y_SEGMENT_AFTER_X(-865.0f, 9000U, 1293.0f),
+  Y_SEGMENT(210.0f, 9000U),
+  Y_SEGMENT_AFTER_X(-865.0f, 9500U, 1293.0f),
 };
 
 static const MotionGroup_t route_3_to_8[] =
 {
-  XY_GROUP(-1375.0f, 30.0f, route_3_to_8_y),
+  XY_GROUP(-1375.0f, 25.0f, route_3_to_8_y),
 };
 
 static const YMotionSegment_t route_4_to_1_y[] =
@@ -221,18 +219,17 @@ static const YMotionSegment_t route_4_to_1_y[] =
 
 static const MotionGroup_t route_4_to_1[] =
 {
-  XY_GROUP(2144.0f, 30.0f, route_4_to_1_y),
+  XY_GROUP(2144.0f, 25.0f, route_4_to_1_y),
 };
 
 static const YMotionSegment_t route_4_to_2_y[] =
 {
-	Y_SEGMENT(220.0f, 9000U),
-  Y_SEGMENT_AFTER_X(-487.0f, 10000U, -707.0f),
+	Y_SEGMENT(-487.0f, 10000U),
 };
 
 static const MotionGroup_t route_4_to_2[] =
 {
-  XY_GROUP(2144.0f, 30.0f, route_4_to_2_y),
+  XY_GROUP(2144.0f, 25.0f, route_4_to_2_y),
 };
 
 static const YMotionSegment_t route_4_to_3_y[] =
@@ -243,7 +240,7 @@ static const YMotionSegment_t route_4_to_3_y[] =
 
 static const MotionGroup_t route_4_to_3[] =
 {
-  XY_GROUP(1884.0f, 30.0f, route_4_to_3_y),
+  XY_GROUP(1884.0f, 25.0f, route_4_to_3_y),
 };
 
 static const YMotionSegment_t route_5_to_1_y[] =
@@ -253,17 +250,17 @@ static const YMotionSegment_t route_5_to_1_y[] =
 
 static const MotionGroup_t route_5_to_1[] =
 {
-  XY_GROUP(2144.0f, 30.0f, route_5_to_1_y),
+  XY_GROUP(2144.0f, 25.0f, route_5_to_1_y),
 };
 
 static const YMotionSegment_t route_5_to_2_y[] =
 {
-  Y_SEGMENT_AFTER_X(-487.0f, 9000U, -707.0f),
+  Y_SEGMENT_AFTER_X(-487.0f, 9000U, -800.0f),
 };
 
 static const MotionGroup_t route_5_to_2[] =
 {
-  XY_GROUP(2144.0f, 30.0f, route_5_to_2_y),
+  XY_GROUP(2144.0f, 25.0f, route_5_to_2_y),
 };
 
 static const YMotionSegment_t route_5_to_3_y[] =
@@ -273,7 +270,7 @@ static const YMotionSegment_t route_5_to_3_y[] =
 
 static const MotionGroup_t route_5_to_3[] =
 {
-  XY_GROUP(1884.0f, 30.0f, route_5_to_3_y),
+  XY_GROUP(1884.0f, 25.0f, route_5_to_3_y),
 };
 
 static const YMotionSegment_t route_6_to_1_y[] =
@@ -283,7 +280,7 @@ static const YMotionSegment_t route_6_to_1_y[] =
 
 static const MotionGroup_t route_6_to_1[] =
 {
-  XY_GROUP(2144.0f, 30.0f, route_6_to_1_y),
+  XY_GROUP(2144.0f, 25.0f, route_6_to_1_y),
 };
 
 static const YMotionSegment_t route_6_to_2_y[] =
@@ -293,7 +290,7 @@ static const YMotionSegment_t route_6_to_2_y[] =
 
 static const MotionGroup_t route_6_to_2[] =
 {
-  XY_GROUP(2144.0f, 30.0f, route_6_to_2_y),
+  XY_GROUP(2144.0f, 25.0f, route_6_to_2_y),
 };
 
 static const YMotionSegment_t route_6_to_3_y[] =
@@ -304,17 +301,17 @@ static const YMotionSegment_t route_6_to_3_y[] =
 
 static const MotionGroup_t route_6_to_3[] =
 {
-  XY_GROUP(1884.0f, 30.0f, route_6_to_3_y),
+  XY_GROUP(1884.0f, 25.0f, route_6_to_3_y),
 };
 
 static const YMotionSegment_t route_7_to_1_y[] =
 {
-  Y_SEGMENT_AFTER_X(513.0f, 9000U, -707.0f),
+  Y_SEGMENT_AFTER_X(513.0f, 10000U, -800.0f),
 };
 
 static const MotionGroup_t route_7_to_1[] =
 {
-  XY_GROUP(2144.0f, 30.0f, route_7_to_1_y),
+  XY_GROUP(2144.0f, 25.0f, route_7_to_1_y),
 };
 
 static const YMotionSegment_t route_7_to_2_y[] =
@@ -324,7 +321,7 @@ static const YMotionSegment_t route_7_to_2_y[] =
 
 static const MotionGroup_t route_7_to_2[] =
 {
-  XY_GROUP(2144.0f, 30.0f, route_7_to_2_y),
+  XY_GROUP(2144.0f, 25.0f, route_7_to_2_y),
 };
 
 static const YMotionSegment_t route_7_to_3_y[] =
@@ -334,18 +331,17 @@ static const YMotionSegment_t route_7_to_3_y[] =
 
 static const MotionGroup_t route_7_to_3[] =
 {
-  XY_GROUP(1884.0f, 30.0f, route_7_to_3_y),
+  XY_GROUP(1884.0f, 25.0f, route_7_to_3_y),
 };
 
 static const YMotionSegment_t route_8_to_1_y[] =
 {
-	Y_SEGMENT(-230.0f, 9000U),
-  Y_SEGMENT_AFTER_X(513.0f, 9500U, -707.0f),
+	Y_SEGMENT(513.0f, 9500U),
 };
 
 static const MotionGroup_t route_8_to_1[] =
 {
-  XY_GROUP(2144.0f, 30.0f, route_8_to_1_y),
+  XY_GROUP(2144.0f, 25.0f, route_8_to_1_y),
 };
 
 static const YMotionSegment_t route_8_to_2_y[] =
@@ -355,7 +351,7 @@ static const YMotionSegment_t route_8_to_2_y[] =
 
 static const MotionGroup_t route_8_to_2[] =
 {
-  XY_GROUP(2144.0f, 30.0f, route_8_to_2_y),
+  XY_GROUP(2144.0f, 25.0f, route_8_to_2_y),
 };
 
 static const YMotionSegment_t route_8_to_3_y[] =
@@ -366,7 +362,7 @@ static const YMotionSegment_t route_8_to_3_y[] =
 
 static const MotionGroup_t route_8_to_3[] =
 {
-  XY_GROUP(1884.0f, 30.0f, route_8_to_3_y),
+  XY_GROUP(1884.0f, 25.0f, route_8_to_3_y),
 };
 
 static const YMotionSegment_t route_4_to_0_y[] =
@@ -376,7 +372,7 @@ static const YMotionSegment_t route_4_to_0_y[] =
 
 static const MotionGroup_t route_4_to_0[] =
 {
-  XY_GROUP(0.0f, 30.0f, route_4_to_0_y),
+  XY_GROUP(0.0f, 25.0f, route_4_to_0_y),
 };
 
 static const YMotionSegment_t route_5_to_0_y[] =
@@ -386,7 +382,7 @@ static const YMotionSegment_t route_5_to_0_y[] =
 
 static const MotionGroup_t route_5_to_0[] =
 {
-  XY_GROUP(0.0f, 30.0f, route_5_to_0_y),
+  XY_GROUP(0.0f, 25.0f, route_5_to_0_y),
 };
 
 static const YMotionSegment_t route_6_to_0_y[] =
@@ -396,7 +392,7 @@ static const YMotionSegment_t route_6_to_0_y[] =
 
 static const MotionGroup_t route_6_to_0[] =
 {
-  XY_GROUP(0.0f, 30.0f, route_6_to_0_y),
+  XY_GROUP(0.0f, 25.0f, route_6_to_0_y),
 };
 
 static const YMotionSegment_t route_7_to_0_y[] =
@@ -406,7 +402,7 @@ static const YMotionSegment_t route_7_to_0_y[] =
 
 static const MotionGroup_t route_7_to_0[] =
 {
-  XY_GROUP(0.0f, 30.0f, route_7_to_0_y),
+  XY_GROUP(0.0f, 25.0f, route_7_to_0_y),
 };
 
 static const YMotionSegment_t route_8_to_0_y[] =
@@ -416,7 +412,7 @@ static const YMotionSegment_t route_8_to_0_y[] =
 
 static const MotionGroup_t route_8_to_0[] =
 {
-  XY_GROUP(0.0f, 30.0f, route_8_to_0_y),
+  XY_GROUP(0.0f, 25.0f, route_8_to_0_y),
 };
 
 static const RoutePlan_t route_table[] =

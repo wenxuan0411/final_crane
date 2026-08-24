@@ -5,8 +5,8 @@
 #define M2006_SPEED_KP                    2.0f
 #define M2006_SPEED_KI                    8.0f
 #define M2006_SPEED_INTEGRAL_LIMIT        2500.0f
-#define M2006_ACCEL_LIMIT_RPM_S           18000.0f
-#define M2006_MAX_ALLOWED_RPM             11000
+#define M2006_BRAKE_INTEGRAL_RETAIN       0.75f
+#define M2006_MAX_ALLOWED_RPM             14000
 #define M2006_HOLD_POSITION_KP_RPM_REV     120.0f
 #define M2006_HOLD_MAX_SPEED_RPM           300.0f
 #define M2006_CONTROL_PERIOD_MS           10U
@@ -355,7 +355,9 @@ void M2006_Axis_Update(uint32_t now_ms)
   float speed_step;
   float current_position_rev;
   float hold_speed_rpm;
+  float speed_slew_limit;
   int16_t current;
+  uint8_t braking;
 
   if ((m2006_axis.state != M2006_AXIS_RUNNING) &&
       (m2006_axis.state != M2006_AXIS_HOLDING))
@@ -405,11 +407,28 @@ void M2006_Axis_Update(uint32_t now_ms)
     }
   }
 
-  speed_step = M2006_ACCEL_LIMIT_RPM_S * dt_s;
+  braking = ((((float)m2006_axis.speed_rpm > 0.0f) &&
+              ((float)m2006_axis.target_speed_rpm <
+               (float)m2006_axis.speed_rpm)) ||
+             (((float)m2006_axis.speed_rpm < 0.0f) &&
+              ((float)m2006_axis.target_speed_rpm >
+               (float)m2006_axis.speed_rpm))) ? 1U : 0U;
+  speed_slew_limit = (braking != 0U) ?
+                     M2006_AXIS_BRAKE_LIMIT_RPM_S :
+                     M2006_AXIS_ACCEL_LIMIT_RPM_S;
+  speed_step = speed_slew_limit * dt_s;
   m2006_axis.command_speed_rpm =
       M2006_MoveTowards(m2006_axis.command_speed_rpm,
                         (float)m2006_axis.target_speed_rpm,
                         speed_step);
+  if ((braking != 0U) &&
+      ((((float)m2006_axis.speed_rpm > m2006_axis.command_speed_rpm) &&
+        (m2006_axis.speed_integral > 0.0f)) ||
+       (((float)m2006_axis.speed_rpm < m2006_axis.command_speed_rpm) &&
+        (m2006_axis.speed_integral < 0.0f))))
+  {
+    m2006_axis.speed_integral *= M2006_BRAKE_INTEGRAL_RETAIN;
+  }
   current = M2006_SpeedPi(m2006_axis.command_speed_rpm,
                           m2006_axis.speed_rpm,
                           dt_s);
@@ -491,5 +510,39 @@ uint8_t M2006_Axis_GetPositionRev(float *position_rev)
 
   *position_rev = (float)(total_ecd - position_zero_ecd) /
                   (float)M2006_ENCODER_COUNTS_PER_REV;
+  return 1U;
+}
+
+uint8_t M2006_Axis_GetSpeedRpm(int16_t *speed_rpm)
+{
+  int16_t feedback_speed_rpm;
+  uint32_t feedback_tick_ms;
+  uint32_t now_ms;
+  uint8_t feedback_ready;
+  uint32_t primask;
+
+  if (speed_rpm == 0)
+  {
+    return 0U;
+  }
+
+  now_ms = HAL_GetTick();
+  primask = __get_PRIMASK();
+  __disable_irq();
+  feedback_speed_rpm = m2006_axis.speed_rpm;
+  feedback_tick_ms = m2006_axis.feedback_tick_ms;
+  feedback_ready = m2006_axis.feedback_ready;
+  if (primask == 0U)
+  {
+    __enable_irq();
+  }
+
+  if ((feedback_ready == 0U) ||
+      (M2006_FeedbackTimedOut(now_ms, feedback_tick_ms) != 0U))
+  {
+    return 0U;
+  }
+
+  *speed_rpm = feedback_speed_rpm;
   return 1U;
 }

@@ -1,11 +1,11 @@
 # Keil build output
-/MDK-ARM/final_crane/
-/MDK-ARM/*.lst
-/MDK-ARM/*.log
+/ZQDY_Ctl/MDK-ARM/final_crane/
+/ZQDY_Ctl/MDK-ARM/*.lst
+/ZQDY_Ctl/MDK-ARM/*.log
 
 # Keil per-user state
-/MDK-ARM/*.uvguix.*
-/MDK-ARM/*.uvoptx
+/ZQDY_Ctl/MDK-ARM/*.uvguix.*
+/ZQDY_Ctl/MDK-ARM/*.uvoptx
 
 # Local editor and temporary files
 /.vscode/

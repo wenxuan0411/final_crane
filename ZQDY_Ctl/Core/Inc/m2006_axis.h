@@ -6,6 +6,8 @@
 
 #define M2006_AXIS_CONTROL_ID       0x200U
 #define M2006_AXIS_FEEDBACK_ID      0x201U
+#define M2006_AXIS_ACCEL_LIMIT_RPM_S 18000.0f
+#define M2006_AXIS_BRAKE_LIMIT_RPM_S 24000.0f
 
 typedef enum
 {
@@ -36,5 +38,6 @@ uint8_t M2006_Axis_HasFeedback(void);
 uint8_t M2006_Axis_HasFault(void);
 M2006_AxisFault_t M2006_Axis_GetFault(void);
 uint8_t M2006_Axis_GetPositionRev(float *position_rev);
+uint8_t M2006_Axis_GetSpeedRpm(int16_t *speed_rpm);
 
 #endif /* M2006_AXIS_H */
